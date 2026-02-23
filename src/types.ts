@@ -40,7 +40,11 @@ export interface ClientGameState {
   skipsRemaining: number;
   declaredSymbol?: CardSymbol;
   declaredColor?: CardColor;
+  activeColor?: CardColor;
+  activeSymbol?: CardSymbol;
+  activeCommand?: CommandKind;
   waitingForDeclaration: boolean;
+  drawnThisTurn: boolean;
   targetScore: number;
   roundWinnerId?: string;
   matchWindowOpen: boolean;

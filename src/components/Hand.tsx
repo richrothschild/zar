@@ -18,18 +18,24 @@ function canPlayCard(card: CardType, state: ClientGameState): boolean {
     if (card.power === 'peacock') return top.kind !== 'power' || top.power === 'peacock';
   }
 
-  if (state.declaredSymbol && !state.declaredColor) {
+  // After dragon: declared symbol OR active color
+  if (state.declaredSymbol) {
     if (card.kind === 'power' && card.power === 'dragon') return true;
-    return card.symbol === state.declaredSymbol;
-  }
-  if (state.declaredColor && !state.declaredSymbol) {
-    if (card.kind === 'power' && card.power === 'peacock') return true;
-    return card.color === state.declaredColor;
+    return card.symbol === state.declaredSymbol || card.color === state.activeColor;
   }
 
-  if (card.color && top.color && card.color === top.color) return true;
-  if (card.symbol && top.symbol && card.symbol === top.symbol) return true;
-  if (card.command && top.command && card.command === top.command) return true;
+  // After peacock: declared color OR active symbol OR active command
+  if (state.declaredColor) {
+    if (card.kind === 'power' && card.power === 'peacock') return true;
+    return card.color === state.declaredColor ||
+           card.symbol === state.activeSymbol ||
+           (card.command !== undefined && card.command === state.activeCommand);
+  }
+
+  // Normal play: active color, active symbol, or active command
+  if (state.activeColor && card.color === state.activeColor) return true;
+  if (state.activeSymbol && card.symbol === state.activeSymbol) return true;
+  if (state.activeCommand && card.command === state.activeCommand) return true;
   return false;
 }
 

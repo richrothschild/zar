@@ -11,29 +11,30 @@ export function buildDeck(): Card[] {
   _idCounter = 0;
   const cards: Card[] = [];
 
-  // 36 Basic Symbol Cards: 6 symbols × 3 colors × 2 copies
+  // 36 Basic Symbol Cards: 6 symbols × 3 colors × 2 copies (1 point each)
   for (const symbol of SYMBOLS) {
     for (const color of COLORS) {
       for (let i = 0; i < 2; i++) {
-        cards.push({ id: uid(), kind: 'basic', color, symbol, points: 5 });
+        cards.push({ id: uid(), kind: 'basic', color, symbol, points: 1 });
       }
     }
   }
 
-  // 18 Command Cards: 3 types × 3 colors × 2 copies
+  // 18 Command Cards: 3 types × 3 colors × 2 copies (wasp=3, frog/crab=2)
   for (const command of COMMANDS) {
+    const points = command === 'wasp' ? 3 : 2;
     for (const color of COLORS) {
       for (let i = 0; i < 2; i++) {
-        cards.push({ id: uid(), kind: 'command', color, command, points: 15 });
+        cards.push({ id: uid(), kind: 'command', color, command, points });
       }
     }
   }
 
-  // 8 Power Cards: Dragon ×4 (2 pairs), Peacock ×4 (2 pairs)
+  // 8 Power Cards: Dragon ×4 (2 pairs), Peacock ×4 (2 pairs) (5 points each)
   for (const power of ['dragon', 'peacock'] as PowerKind[]) {
     for (const pair of [1, 2] as const) {
       for (let i = 0; i < 2; i++) {
-        cards.push({ id: uid(), kind: 'power', power, pair, points: 25 });
+        cards.push({ id: uid(), kind: 'power', power, pair, points: 5 });
       }
     }
   }

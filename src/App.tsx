@@ -29,7 +29,7 @@ export default function App() {
     });
 
     socket.on('last_card_announced', ({ playerName }: { playerName: string }) => {
-      showNotification(`📢 ${playerName} says "Last Card!"`);
+      showNotification(`📢 ${playerName} says ZAR!`);
     });
 
     socket.on('last_card_challenge', ({ challengerName, targetName }: { challengerName: string; targetName: string }) => {

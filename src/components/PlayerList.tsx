@@ -44,7 +44,7 @@ function PlayerRow({ player, isMe, isCurrent, state }: {
       <div className="player-row__info">
         <span className="player-row__name">{player.name}{isMe ? ' (you)' : ''}</span>
         {!player.connected && <span className="player-row__tag player-row__tag--dc">disconnected</span>}
-        {player.announcedLastCard && <span className="player-row__tag player-row__tag--last">LAST CARD!</span>}
+        {player.announcedLastCard && <span className="player-row__tag player-row__tag--last">ZAR!</span>}
       </div>
       <div className="player-row__stats">
         <span className="player-row__cards">🃏 {player.handCount}</span>

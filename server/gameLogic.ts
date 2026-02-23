@@ -1,4 +1,4 @@
-import { Card, CardColor, CardSymbol, GameState, Player } from './types.js';
+import { Card, CardColor, CardSymbol, CommandKind, GameState } from './types.js';
 import { buildDeck, calcHandScore, shuffle } from './deck.js';
 
 // ── Playability ────────────────────────────────────────────────────────────────
@@ -7,35 +7,35 @@ export function canPlay(card: Card, state: GameState): boolean {
   const top = state.playPile[state.playPile.length - 1];
   if (!top) return true;
 
-  // If there are pending wasp draws, only another wasp (or nothing) can save you
+  // If there are pending wasp draws, only another wasp can stack
   if (state.pendingDrawCount > 0) {
     return card.kind === 'command' && card.command === 'wasp';
   }
 
-  // Power cards
+  // Power cards are always playable (type-restricted)
   if (card.kind === 'power') {
     if (card.power === 'dragon') return top.kind !== 'power' || top.power === 'dragon';
     if (card.power === 'peacock') return top.kind !== 'power' || top.power === 'peacock';
   }
 
-  // After dragon, must match declared symbol (or another dragon)
-  if (state.declaredSymbol && !state.declaredColor) {
+  // After dragon: declared symbol OR active color OR another dragon
+  if (state.declaredSymbol) {
     if (card.kind === 'power' && card.power === 'dragon') return true;
-    return card.symbol === state.declaredSymbol;
+    return card.symbol === state.declaredSymbol || card.color === state.activeColor;
   }
 
-  // After peacock, must match declared color (or another peacock)
-  if (state.declaredColor && !state.declaredSymbol) {
+  // After peacock: declared color OR active symbol OR active command OR another peacock
+  if (state.declaredColor) {
     if (card.kind === 'power' && card.power === 'peacock') return true;
-    return card.color === state.declaredColor;
+    return card.color === state.declaredColor ||
+           card.symbol === state.activeSymbol ||
+           (card.command !== undefined && card.command === state.activeCommand);
   }
 
-  // Normal play: same color or same symbol
-  if (card.color && top.color && card.color === top.color) return true;
-  if (card.symbol && top.symbol && card.symbol === top.symbol) return true;
-  if (card.command && top.command && card.command === top.command) return true;
-  // command vs basic — match by color
-  if (card.color && top.color && card.color === top.color) return true;
+  // Normal play: active color, active symbol, or active command
+  if (state.activeColor && card.color === state.activeColor) return true;
+  if (state.activeSymbol && card.symbol === state.activeSymbol) return true;
+  if (state.activeCommand && card.command === state.activeCommand) return true;
 
   return false;
 }
@@ -80,11 +80,24 @@ export function startRound(state: GameState): GameState {
   while (topIdx < deck.length && deck[topIdx].kind === 'power') topIdx++;
   if (topIdx === deck.length) topIdx = idx; // fallback (shouldn't happen)
 
-  const playPile = [deck[topIdx]];
+  const topCard = deck[topIdx];
+  const playPile = [topCard];
   const drawPile = [
     ...deck.slice(idx, topIdx),
     ...deck.slice(topIdx + 1),
   ];
+
+  // Initialize active state from the starting card
+  let activeColor: CardColor | undefined;
+  let activeSymbol: CardSymbol | undefined;
+  let activeCommand: CommandKind | undefined;
+  if (topCard.kind === 'basic') {
+    activeColor = topCard.color;
+    activeSymbol = topCard.symbol;
+  } else if (topCard.kind === 'command') {
+    activeColor = topCard.color;
+    activeCommand = topCard.command;
+  }
 
   return {
     ...state,
@@ -98,7 +111,11 @@ export function startRound(state: GameState): GameState {
     skipsRemaining: 0,
     declaredSymbol: undefined,
     declaredColor: undefined,
+    activeColor,
+    activeSymbol,
+    activeCommand,
     waitingForDeclaration: false,
+    drawnThisTurn: false,
     roundWinnerId: undefined,
     matchWindowOpen: false,
   };
@@ -142,13 +159,31 @@ export function removeFromHand(state: GameState, playerId: string, cardId: strin
   return [{ ...state, players }, card];
 }
 
-/** Place a card on the play pile and clear declared state. */
+/** Place a card on the play pile, update active state, and clear declarations. */
 function placeCard(state: GameState, card: Card): GameState {
+  let activeColor = state.activeColor;
+  let activeSymbol = state.activeSymbol;
+  let activeCommand = state.activeCommand;
+
+  if (card.kind === 'basic') {
+    activeColor = card.color;
+    activeSymbol = card.symbol;
+    activeCommand = undefined;
+  } else if (card.kind === 'command') {
+    activeColor = card.color;
+    activeCommand = card.command;
+    activeSymbol = undefined;
+  }
+  // Power cards: leave active values unchanged
+
   return {
     ...state,
     playPile: [...state.playPile, card],
     declaredSymbol: undefined,
     declaredColor: undefined,
+    activeColor,
+    activeSymbol,
+    activeCommand,
   };
 }
 
@@ -161,7 +196,7 @@ export function advanceTurn(state: GameState, steps = 1): GameState {
       ? (idx + 1) % n
       : (idx - 1 + n) % n;
   }
-  return { ...state, currentPlayerIndex: idx };
+  return { ...state, currentPlayerIndex: idx, drawnThisTurn: false };
 }
 
 /** Apply a single card play (not double, not match). Returns new state. */
@@ -222,23 +257,25 @@ export function applyDouble(state: GameState, playerId: string, card1: Card, car
   return s;
 }
 
-/** After dragon declaration. */
+/** After dragon declaration — keep activeColor so next player can also play that color. */
 export function applyDragonDeclaration(state: GameState, symbol: CardSymbol): GameState {
   return advanceTurn({
     ...state,
     declaredSymbol: symbol,
     declaredColor: undefined,
     waitingForDeclaration: false,
+    // activeColor stays unchanged — next player can play declared symbol OR active color
   });
 }
 
-/** After peacock declaration. */
+/** After peacock declaration — keep activeSymbol/activeCommand so next player can also play those. */
 export function applyPeacockDeclaration(state: GameState, color: CardColor): GameState {
   return advanceTurn({
     ...state,
     declaredColor: color,
     declaredSymbol: undefined,
     waitingForDeclaration: false,
+    // activeSymbol/activeCommand stay unchanged — next player can play declared color OR those
   });
 }
 
@@ -269,13 +306,16 @@ export function checkRoundOver(state: GameState): GameState {
 import { ClientGameState, ClientPlayer } from './types.js';
 
 export function buildClientState(state: GameState, requestingPlayerId: string): ClientGameState {
+  const showAllHands = state.phase === 'round_over' || state.phase === 'game_over';
+
   return {
     phase: state.phase,
     players: state.players.map((p): ClientPlayer => ({
       id: p.id,
       name: p.name,
       handCount: p.hand.length,
-      hand: p.id === requestingPlayerId ? p.hand : undefined,
+      // Show own hand always; show others' hands at round/game end (only those with cards = earned points)
+      hand: (p.id === requestingPlayerId || (showAllHands && p.hand.length > 0)) ? p.hand : undefined,
       score: p.score,
       connected: p.connected,
       announcedLastCard: p.announcedLastCard,
@@ -288,7 +328,11 @@ export function buildClientState(state: GameState, requestingPlayerId: string): 
     skipsRemaining: state.skipsRemaining,
     declaredSymbol: state.declaredSymbol,
     declaredColor: state.declaredColor,
+    activeColor: state.activeColor,
+    activeSymbol: state.activeSymbol,
+    activeCommand: state.activeCommand,
     waitingForDeclaration: state.waitingForDeclaration,
+    drawnThisTurn: state.drawnThisTurn,
     targetScore: state.targetScore,
     roundWinnerId: state.roundWinnerId,
     matchWindowOpen: state.matchWindowOpen,

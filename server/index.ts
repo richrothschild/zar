@@ -108,6 +108,7 @@ io.on('connection', (socket: Socket) => {
       pendingDrawCount: 0,
       skipsRemaining: 0,
       waitingForDeclaration: false,
+      drawnThisTurn: false,
       targetScore: targetScore || 50,
       matchWindowOpen: false,
     };
@@ -246,17 +247,24 @@ io.on('connection', (socket: Socket) => {
     if (s.waitingForDeclaration) return;
     if (s.players[s.currentPlayerIndex].id !== socket.id) { emitError("It's not your turn."); return; }
 
-    const drawCount = s.pendingDrawCount > 0 ? s.pendingDrawCount : 1;
-    s = drawCards(s, socket.id, drawCount);
-    s = { ...s, pendingDrawCount: 0 };
+    if (s.pendingDrawCount > 0) {
+      // Wasp penalty: draw all pending cards, then auto-advance turn
+      s = drawCards(s, socket.id, s.pendingDrawCount);
+      s = { ...s, pendingDrawCount: 0 };
+      s = advanceTurn(s);
+    } else {
+      // Voluntary draw: only allowed once per turn
+      if (s.drawnThisTurn) { emitError('You already drew a card this turn.'); return; }
+      s = drawCards(s, socket.id, 1);
+      s = { ...s, drawnThisTurn: true };
+      // Player can still play or pass; turn does NOT auto-advance
+    }
 
-    // After drawing because of wasp OR drawing 1, the player still takes their turn
-    // (unless they drew because of wasp, in which case they must still take a turn)
     room.state = s;
     broadcastState(currentRoomId!);
   });
 
-  // ── pass (draw one, then pass) ──
+  // ── pass ──
   socket.on('pass', () => {
     const ctx = getRoomAndPlayer();
     if (!ctx) return;
@@ -264,11 +272,10 @@ io.on('connection', (socket: Socket) => {
     let s = room.state;
 
     if (s.phase !== 'playing') return;
+    if (s.waitingForDeclaration) return;
     if (s.players[s.currentPlayerIndex].id !== socket.id) { emitError("It's not your turn."); return; }
-    if (s.pendingDrawCount > 0) { emitError('You must draw due to a Wasp, not pass.'); return; }
+    if (s.pendingDrawCount > 0) { emitError('You must draw your wasp cards first.'); return; }
 
-    // "Draw 1 card and then pass" — only valid if player explicitly passes after drawing
-    // In our flow: draw_card doesn't advance; pass advances after drawing
     s = advanceTurn(s);
     room.state = s;
     broadcastState(currentRoomId!);

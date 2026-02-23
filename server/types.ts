@@ -38,7 +38,11 @@ export interface GameState {
   skipsRemaining: number;     // stacked frog skips
   declaredSymbol?: CardSymbol; // after dragon played
   declaredColor?: CardColor;   // after peacock played
+  activeColor?: CardColor;     // color of last non-power card
+  activeSymbol?: CardSymbol;   // symbol of last basic card
+  activeCommand?: CommandKind; // command of last command card
   waitingForDeclaration: boolean; // dragon/peacock waiting for choice
+  drawnThisTurn: boolean;     // player already drew voluntarily this turn
   targetScore: number;
   roundWinnerId?: string;
   matchWindowOpen: boolean;   // brief window for out-of-turn matches
@@ -56,7 +60,11 @@ export interface ClientGameState {
   skipsRemaining: number;
   declaredSymbol?: CardSymbol;
   declaredColor?: CardColor;
+  activeColor?: CardColor;
+  activeSymbol?: CardSymbol;
+  activeCommand?: CommandKind;
   waitingForDeclaration: boolean;
+  drawnThisTurn: boolean;
   targetScore: number;
   roundWinnerId?: string;
   matchWindowOpen: boolean;

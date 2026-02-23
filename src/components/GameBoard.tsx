@@ -1,11 +1,10 @@
-import type { ClientGameState } from '../types';
+import type { ClientGameState, ClientPlayer } from '../types';
 import { socket } from '../socket';
-import CardComponent from './Card';
+import CardComponent, { SYMBOL_EMOJI, COLOR_HEX } from './Card';
 import Hand from './Hand';
 import PlayerList from './PlayerList';
 import DragonModal from './DragonModal';
 import PeacockModal from './PeacockModal';
-import { SYMBOL_EMOJI } from './Card';
 
 interface GameBoardProps {
   state: ClientGameState;
@@ -32,11 +31,42 @@ export default function GameBoard({ state, myId, hostId }: GameBoardProps) {
     return <ScoreScreen state={state} myId={myId} isHost={isHost} />;
   }
 
-  const declaredLabel = state.declaredSymbol
-    ? `${SYMBOL_EMOJI[state.declaredSymbol]} ${state.declaredSymbol}`
-    : state.declaredColor
-    ? `${state.declaredColor.toUpperCase()}`
-    : null;
+  // Build active state display label
+  let activeDisplay: React.ReactNode = null;
+  if (state.declaredSymbol) {
+    activeDisplay = (
+      <span className="board__declared">
+        Symbol: {SYMBOL_EMOJI[state.declaredSymbol]} {state.declaredSymbol}
+        {state.activeColor && (
+          <> &nbsp;|&nbsp; Color: <span className="color-dot" style={{ background: COLOR_HEX[state.activeColor] }} /></>
+        )}
+      </span>
+    );
+  } else if (state.declaredColor) {
+    activeDisplay = (
+      <span className="board__declared">
+        Color: <span className="color-dot" style={{ background: COLOR_HEX[state.declaredColor] }} />
+        {state.activeSymbol && <> &nbsp;|&nbsp; Symbol: {SYMBOL_EMOJI[state.activeSymbol]}</>}
+        {!state.activeSymbol && state.activeCommand && <> &nbsp;|&nbsp; {state.activeCommand.toUpperCase()}</>}
+      </span>
+    );
+  } else if (state.activeColor || state.activeSymbol || state.activeCommand) {
+    activeDisplay = (
+      <span className="board__declared">
+        {state.activeColor && <span className="color-dot" style={{ background: COLOR_HEX[state.activeColor] }} />}
+        {state.activeSymbol && <> {SYMBOL_EMOJI[state.activeSymbol]}</>}
+        {!state.activeSymbol && state.activeCommand && <> {state.activeCommand.toUpperCase()}</>}
+      </span>
+    );
+  }
+
+  // ZAR list: players at 1 card
+  const zarPlayers = state.players.filter(p => p.handCount === 1);
+
+  // Draw button: available if pendingDrawCount > 0 (forced), OR not yet drawn this turn
+  const canDraw = isMyTurn && !state.waitingForDeclaration &&
+    (state.pendingDrawCount > 0 || !state.drawnThisTurn);
+  const drawLabel = state.pendingDrawCount > 0 ? `Draw ${state.pendingDrawCount} 🐝` : 'Draw 1';
 
   return (
     <div className="board">
@@ -45,7 +75,7 @@ export default function GameBoard({ state, myId, hostId }: GameBoardProps) {
         <PlayerList state={state} myId={myId} />
         {state.matchWindowOpen && (
           <div className="board__match-banner">
-            ⚡ Match window open! Play a matching card!
+            ⚡ Match window! Play a matching card!
           </div>
         )}
       </aside>
@@ -60,14 +90,17 @@ export default function GameBoard({ state, myId, hostId }: GameBoardProps) {
           {state.pendingDrawCount > 0 && (
             <span className="board__wasp-warning"> 🐝 Draw {state.pendingDrawCount} (or play a Wasp)</span>
           )}
-          {declaredLabel && (
-            <span className="board__declared"> Active: {declaredLabel}</span>
-          )}
+          {activeDisplay}
         </div>
 
         <div className="board__piles">
           {/* Draw pile */}
-          <div className="board__draw-pile" onClick={isMyTurn && !state.waitingForDeclaration ? handleDraw : undefined} title="Draw a card">
+          <div
+            className="board__draw-pile"
+            onClick={canDraw ? handleDraw : undefined}
+            title="Draw a card"
+            style={{ opacity: canDraw ? 1 : 0.6 }}
+          >
             <CardComponent card={{ id: 'back', kind: 'basic', points: 0 }} faceDown />
             <span className="board__pile-count">{state.drawPileCount}</span>
           </div>
@@ -81,11 +114,24 @@ export default function GameBoard({ state, myId, hostId }: GameBoardProps) {
           </div>
         </div>
 
+        {/* ZAR banner — players at 1 card */}
+        {zarPlayers.length > 0 && (
+          <div className="board__zar-list">
+            {zarPlayers.map(p => (
+              <span key={p.id} className="board__zar-item">{p.name} — ZAR!</span>
+            ))}
+          </div>
+        )}
+
         {/* Action buttons */}
         {isMyTurn && !state.waitingForDeclaration && (
           <div className="board__actions">
-            <button className="btn btn--draw" onClick={handleDraw}>
-              {state.pendingDrawCount > 0 ? `Draw ${state.pendingDrawCount} 🐝` : 'Draw 1'}
+            <button
+              className="btn btn--draw"
+              onClick={handleDraw}
+              disabled={!canDraw}
+            >
+              {drawLabel}
             </button>
             {state.pendingDrawCount === 0 && (
               <button className="btn btn--pass" onClick={handlePass}>Pass</button>
@@ -93,13 +139,14 @@ export default function GameBoard({ state, myId, hostId }: GameBoardProps) {
           </div>
         )}
 
-        {/* Dragon declaration modal — when server is waiting */}
+        {/* Dragon declaration modal */}
         {state.waitingForDeclaration && isMyTurn && state.topCard?.power === 'dragon' && (
           <DragonModal
             onSelect={symbol => socket.emit('declare_symbol', { symbol })}
             onClose={() => {}}
           />
         )}
+        {/* Peacock declaration modal */}
         {state.waitingForDeclaration && isMyTurn && state.topCard?.power === 'peacock' && (
           <PeacockModal
             onSelect={color => socket.emit('declare_color', { color })}
@@ -114,7 +161,7 @@ export default function GameBoard({ state, myId, hostId }: GameBoardProps) {
           Your hand ({me?.hand?.length ?? 0} cards)
           {me?.hand?.length === 1 && !me.announcedLastCard && (
             <button className="btn btn--last-card" onClick={() => socket.emit('announce_last_card')}>
-              Say "Last Card!"
+              Say ZAR!
             </button>
           )}
         </div>
@@ -137,11 +184,18 @@ function ScoreScreen({ state, myId, isHost }: { state: ClientGameState; myId: st
       {winner && <p className="score-screen__winner">{winner.name} went out!</p>}
 
       <div className="score-screen__table">
-        {sortedPlayers.map((p, i) => (
+        {sortedPlayers.map((p: ClientPlayer, i: number) => (
           <div key={p.id} className={`score-row${p.id === myId ? ' score-row--me' : ''}`}>
-            <span className="score-row__rank">#{i + 1}</span>
-            <span className="score-row__name">{p.name}</span>
-            <span className="score-row__score">{p.score} / {state.targetScore} pts</span>
+            <div className="score-row__main">
+              <span className="score-row__rank">#{i + 1}</span>
+              <span className="score-row__name">{p.name}</span>
+              <span className="score-row__score">{p.score} / {state.targetScore} pts</span>
+            </div>
+            {p.hand && p.hand.length > 0 && (
+              <div className="score-row__cards">
+                {p.hand.map(c => <CardComponent key={c.id} card={c} small />)}
+              </div>
+            )}
           </div>
         ))}
       </div>
