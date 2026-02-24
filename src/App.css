@@ -383,7 +383,12 @@
 .player-row__name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .player-row__tag { font-size: 0.65rem; padding: 1px 5px; border-radius: 4px; font-weight: 700; }
 .player-row__tag--dc { background: #555; color: #aaa; }
+.player-row__tag--bot { background: #3a3a5c; color: #9090cc; }
 .player-row__tag--last { background: #ff9800; color: #fff; animation: pulse 1s infinite; }
+.player-list__spectators { margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid rgba(255,255,255,0.08); }
+.player-list__spectators-label { font-size: 0.65rem; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+.spectator-row { font-size: 0.75rem; color: #666; font-style: italic; padding: 2px 0; }
+.board__spectator-label { font-style: italic; color: #888; }
 .player-row__stats { display: flex; gap: 0.5rem; font-size: 0.8rem; color: #aaa; }
 .player-row__challenge { font-size: 0.7rem; padding: 2px 6px; background: #e94560; border: none; border-radius: 4px; color: #fff; cursor: pointer; min-height: 28px; }
 
@@ -403,8 +408,9 @@
   width: 90%;
   text-align: center;
 }
-.modal h2 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-.modal p { color: #aaa; margin-bottom: 1.5rem; }
+.modal h2, .modal__title { font-size: 1.5rem; margin-bottom: 0.5rem; }
+.modal p, .modal__body { color: #aaa; margin-bottom: 1.5rem; }
+.modal__actions { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; }
 .modal-options { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; }
 .modal-option {
   background: rgba(255,255,255,0.08);

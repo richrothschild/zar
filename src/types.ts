@@ -27,6 +27,12 @@ export interface ClientPlayer {
   score: number;
   connected: boolean;
   announcedLastCard: boolean;
+  isBot?: boolean;
+}
+
+export interface Spectator {
+  id: string;
+  name: string;
 }
 
 export interface ClientGameState {
@@ -49,11 +55,14 @@ export interface ClientGameState {
   targetScore: number;
   roundWinnerId?: string;
   matchWindowOpen: boolean;
+  spectators: { id: string; name: string }[];
+  isSpectator: boolean;
 }
 
 export interface RoomInfo {
   roomId: string;
   hostId: string;
-  players: { id: string; name: string; connected: boolean }[];
+  players: { id: string; name: string; connected: boolean; isBot?: boolean }[];
+  spectators: { id: string; name: string }[];
   phase: GamePhase;
 }

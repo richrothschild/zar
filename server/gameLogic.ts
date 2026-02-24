@@ -217,6 +217,20 @@ export function advanceTurn(state: GameState, steps = 1): GameState {
   return { ...state, currentPlayerIndex: idx, drawnThisTurn: false };
 }
 
+/** Like advanceTurn but keeps stepping past disconnected non-bot players. */
+export function advanceTurnSkippingInactive(state: GameState, steps = 1): GameState {
+  let s = advanceTurn(state, steps);
+  const n = s.players.length;
+  let safety = 0;
+  while (safety < n) {
+    const cur = s.players[s.currentPlayerIndex];
+    if (cur.connected || cur.isBot) break;
+    s = advanceTurn(s);
+    safety++;
+  }
+  return s;
+}
+
 /** Apply a single card play (not double, not match). Returns new state. */
 export function applyPlay(state: GameState, playerId: string, card: Card): GameState {
   let s = placeCard(state, card);
@@ -325,6 +339,7 @@ import { ClientGameState, ClientPlayer } from './types.js';
 
 export function buildClientState(state: GameState, requestingPlayerId: string): ClientGameState {
   const showAllHands = state.phase === 'round_over' || state.phase === 'game_over';
+  const isSpectator = requestingPlayerId === 'spectator';
 
   return {
     phase: state.phase,
@@ -332,11 +347,12 @@ export function buildClientState(state: GameState, requestingPlayerId: string): 
       id: p.id,
       name: p.name,
       handCount: p.hand.length,
-      // Show own hand always; show others' hands at round/game end (only those with cards = earned points)
-      hand: (p.id === requestingPlayerId || (showAllHands && p.hand.length > 0)) ? p.hand : undefined,
+      // Spectators never see hands; others see own hand always + losers' hands at round/game end
+      hand: (!isSpectator && (p.id === requestingPlayerId || (showAllHands && p.hand.length > 0))) ? p.hand : undefined,
       score: p.score,
       connected: p.connected,
       announcedLastCard: p.announcedLastCard,
+      isBot: p.isBot,
     })),
     drawPileCount: state.drawPile.length,
     topCard: state.playPile[state.playPile.length - 1] ?? null,
@@ -355,5 +371,7 @@ export function buildClientState(state: GameState, requestingPlayerId: string): 
     targetScore: state.targetScore,
     roundWinnerId: state.roundWinnerId,
     matchWindowOpen: state.matchWindowOpen,
+    spectators: state.spectators.map(s => ({ id: s.id, name: s.name })),
+    isSpectator: false, // caller overrides to true when sending to a spectator
   };
 }

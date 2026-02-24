@@ -11,11 +11,12 @@ interface GameBoardProps {
   state: ClientGameState;
   myId: string;
   hostId: string;
+  isSpectator: boolean;
 }
 
-export default function GameBoard({ state, myId, hostId }: GameBoardProps) {
+export default function GameBoard({ state, myId, hostId, isSpectator }: GameBoardProps) {
   const me = state.players.find(p => p.id === myId);
-  const isMyTurn = state.players[state.currentPlayerIndex]?.id === myId;
+  const isMyTurn = !isSpectator && state.players[state.currentPlayerIndex]?.id === myId;
   const isHost = myId === hostId;
 
   const currentPlayer = state.players[state.currentPlayerIndex];
@@ -79,15 +80,17 @@ export default function GameBoard({ state, myId, hostId }: GameBoardProps) {
             ⚡ Match window! Play a matching card!
           </div>
         )}
-        <VoiceChat players={state.players} myId={myId} />
+        <VoiceChat players={state.players} spectators={state.spectators} myId={myId} />
       </aside>
 
       {/* Center — play area */}
       <main className="board__center">
         <div className="board__status">
-          {isMyTurn
-            ? <span className="board__your-turn">Your turn!</span>
-            : <span>Waiting for <strong>{currentPlayer?.name}</strong>…</span>
+          {isSpectator
+            ? <span className="board__spectator-label">👁 Watching</span>
+            : isMyTurn
+              ? <span className="board__your-turn">Your turn!</span>
+              : <span>Waiting for <strong>{currentPlayer?.name}</strong>…</span>
           }
           {state.pendingDrawCount > 0 && (
             <span className="board__wasp-warning"> 🐝 Draw {state.pendingDrawCount} (or play a Wasp)</span>
@@ -157,20 +160,22 @@ export default function GameBoard({ state, myId, hostId }: GameBoardProps) {
         )}
       </main>
 
-      {/* Bottom — my hand */}
-      <footer className="board__hand-area">
-        <div className="board__hand-label">
-          Your hand ({me?.hand?.length ?? 0} cards)
-          {me?.hand?.length === 1 && !me.announcedLastCard && (
-            <button className="btn btn--last-card" onClick={() => socket.emit('announce_last_card')}>
-              Say ZAR!
-            </button>
+      {/* Bottom — my hand (hidden for spectators) */}
+      {!isSpectator && (
+        <footer className="board__hand-area">
+          <div className="board__hand-label">
+            Your hand ({me?.hand?.length ?? 0} cards)
+            {me?.hand?.length === 1 && !me.announcedLastCard && (
+              <button className="btn btn--last-card" onClick={() => socket.emit('announce_last_card')}>
+                Say ZAR!
+              </button>
+            )}
+          </div>
+          {me?.hand && (
+            <Hand hand={me.hand} state={state} myId={myId} isMyTurn={isMyTurn} />
           )}
-        </div>
-        {me?.hand && (
-          <Hand hand={me.hand} state={state} myId={myId} isMyTurn={isMyTurn} />
-        )}
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }

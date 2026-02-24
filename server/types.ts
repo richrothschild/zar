@@ -22,6 +22,13 @@ export interface Player {
   score: number;
   connected: boolean;
   announcedLastCard: boolean;
+  isBot?: boolean;
+  reconnectTimer?: ReturnType<typeof setTimeout>; // server-internal, never sent to client
+}
+
+export interface Spectator {
+  id: string;
+  name: string;
 }
 
 export type Direction = 'cw' | 'ccw';
@@ -47,6 +54,7 @@ export interface GameState {
   targetScore: number;
   roundWinnerId?: string;
   matchWindowOpen: boolean;   // brief window for out-of-turn matches
+  spectators: Spectator[];
 }
 
 // What the client receives — hand is hidden for other players
@@ -70,6 +78,8 @@ export interface ClientGameState {
   targetScore: number;
   roundWinnerId?: string;
   matchWindowOpen: boolean;
+  spectators: { id: string; name: string }[];
+  isSpectator: boolean;
 }
 
 export interface ClientPlayer {
@@ -80,6 +90,7 @@ export interface ClientPlayer {
   score: number;
   connected: boolean;
   announcedLastCard: boolean;
+  isBot?: boolean;
 }
 
 export interface Room {
@@ -97,3 +108,5 @@ export interface DeclareSymbolPayload { symbol: CardSymbol; }
 export interface DeclareColorPayload { color: CardColor; }
 export interface MatchCardPayload { cardId: string; }
 export interface ChallengLastCardPayload { targetPlayerId: string; }
+export interface SuggestBotsPayload { currentCount: number; botsNeeded: number; }
+export interface ConfirmBotsPayload { confirm: boolean; }

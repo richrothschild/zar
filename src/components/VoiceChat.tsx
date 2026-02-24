@@ -9,10 +9,11 @@ const ICE_SERVERS = [
 
 interface VoiceChatProps {
   players: ClientPlayer[];
+  spectators: { id: string; name: string }[];
   myId: string;
 }
 
-export default function VoiceChat({ players, myId }: VoiceChatProps) {
+export default function VoiceChat({ players, spectators, myId }: VoiceChatProps) {
   const [inVoice, setInVoice] = useState(false);
   const [muted, setMuted] = useState(false);
   const [voiceUserIds, setVoiceUserIds] = useState<string[]>([]);
@@ -23,7 +24,9 @@ export default function VoiceChat({ players, myId }: VoiceChatProps) {
   const audiosRef = useRef(new Map<string, HTMLAudioElement>());
 
   function getPlayerName(id: string) {
-    return players.find(p => p.id === id)?.name ?? 'Unknown';
+    return players.find(p => p.id === id)?.name
+        ?? spectators.find(s => s.id === id)?.name
+        ?? 'Unknown';
   }
 
   const removePeer = useCallback((peerId: string) => {

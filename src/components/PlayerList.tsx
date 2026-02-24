@@ -23,6 +23,16 @@ export default function PlayerList({ state, myId }: PlayerListProps) {
           state={state}
         />
       ))}
+      {state.spectators.length > 0 && (
+        <div className="player-list__spectators">
+          <div className="player-list__spectators-label">Watching</div>
+          {state.spectators.map(s => (
+            <div key={s.id} className="spectator-row">
+              👁 {s.name}{s.id === myId ? ' (you)' : ''}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -44,6 +54,7 @@ function PlayerRow({ player, isMe, isCurrent, state }: {
       <div className="player-row__info">
         <span className="player-row__name">{player.name}{isMe ? ' (you)' : ''}</span>
         {!player.connected && <span className="player-row__tag player-row__tag--dc">disconnected</span>}
+        {player.isBot && <span className="player-row__tag player-row__tag--bot">BOT</span>}
         {player.announcedLastCard && <span className="player-row__tag player-row__tag--last">ZAR!</span>}
       </div>
       <div className="player-row__stats">

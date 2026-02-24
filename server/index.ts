@@ -3,12 +3,14 @@ import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { Room, GameState, Card, CardSymbol, CardColor } from './types.js';
+import type { Room, GameState, CardSymbol, CardColor } from './types.js';
 import {
   startRound, drawCards, removeFromHand, applyPlay, applyDouble,
   applyDragonDeclaration, applyPeacockDeclaration,
-  checkRoundOver, buildClientState, canPlay, isMatch, isDouble, advanceTurn,
+  checkRoundOver, buildClientState, canPlay, isMatch, isDouble,
+  advanceTurn, advanceTurnSkippingInactive,
 } from './gameLogic.js';
+import { computeBotAction } from './botLogic.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
@@ -29,6 +31,15 @@ const rooms = new Map<string, Room>();
 
 // ── Voice chat participants ─────────────────────────────────────────────────────
 const voiceRooms = new Map<string, Set<string>>(); // roomId → Set<socketId>
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+const SYMBOLS: CardSymbol[] = ['galaxy', 'moon', 'cloud', 'sun', 'star', 'lightning'];
+const COLORS: CardColor[] = ['yellow', 'blue', 'red'];
+const RECONNECT_MS = 90_000;
+
+function randItem<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
 function removeFromVoice(socketId: string) {
   for (const [roomId, participants] of voiceRooms.entries()) {
@@ -51,9 +62,14 @@ function genRoomId(): string {
 function broadcastState(roomId: string) {
   const room = rooms.get(roomId);
   if (!room) return;
+  // Send personalized state to each connected human player
   for (const player of room.state.players) {
-    const clientState = buildClientState(room.state, player.id);
-    io.to(player.id).emit('game_state', clientState);
+    if (player.isBot || !player.connected) continue;
+    io.to(player.id).emit('game_state', buildClientState(room.state, player.id));
+  }
+  // Send public state (no hands) to spectators
+  for (const spec of room.state.spectators) {
+    io.to(spec.id).emit('game_state', { ...buildClientState(room.state, 'spectator'), isSpectator: true });
   }
 }
 
@@ -63,7 +79,8 @@ function broadcastRoomInfo(roomId: string) {
   io.to(roomId).emit('room_update', {
     roomId,
     hostId: room.hostId,
-    players: room.state.players.map(p => ({ id: p.id, name: p.name, connected: p.connected })),
+    players: room.state.players.map(p => ({ id: p.id, name: p.name, connected: p.connected, isBot: p.isBot })),
+    spectators: room.state.spectators.map(s => ({ id: s.id, name: s.name })),
     phase: room.state.phase,
   });
 }
@@ -91,6 +108,128 @@ function closeMatchWindow(roomId: string) {
   room.state = { ...room.state, matchWindowOpen: false };
   room.state = checkRoundOver(room.state);
   broadcastState(roomId);
+  scheduleBotTurnIfNeeded(roomId);
+}
+
+// ── Bot helpers ────────────────────────────────────────────────────────────────
+function scheduleBotTurnIfNeeded(roomId: string) {
+  const room = rooms.get(roomId);
+  if (!room || room.state.phase !== 'playing') return;
+  const cur = room.state.players[room.state.currentPlayerIndex];
+  if (cur?.isBot) setTimeout(() => executeBotTurn(roomId), 800);
+}
+
+function executeBotTurn(roomId: string) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  if (room.state.phase !== 'playing') return;
+
+  const bot = room.state.players[room.state.currentPlayerIndex];
+  if (!bot?.isBot) return;
+
+  const action = computeBotAction(room.state, bot.id);
+
+  switch (action.type) {
+    case 'declare_symbol': {
+      room.state = applyDragonDeclaration(room.state, action.symbol);
+      openMatchWindow(roomId);
+      return;
+    }
+    case 'declare_color': {
+      room.state = applyPeacockDeclaration(room.state, action.color);
+      openMatchWindow(roomId);
+      return;
+    }
+    case 'play_card': {
+      const [s2, card] = removeFromHand(room.state, bot.id, action.cardId);
+      if (!card) break;
+      room.state = applyPlay(s2, bot.id, card);
+
+      // Auto-announce ZAR if bot now has 1 card
+      const updatedBot = room.state.players.find(p => p.id === bot.id);
+      if (updatedBot && updatedBot.hand.length === 1 && !updatedBot.announcedLastCard) {
+        room.state = {
+          ...room.state,
+          players: room.state.players.map(p =>
+            p.id === bot.id ? { ...p, announcedLastCard: true } : p
+          ),
+        };
+        io.to(roomId).emit('last_card_announced', { playerName: bot.name });
+      }
+
+      // Check if bot went out
+      const afterBot = room.state.players.find(p => p.id === bot.id);
+      if (afterBot && afterBot.hand.length === 0) {
+        room.state = checkRoundOver(room.state);
+        broadcastState(roomId);
+        return;
+      }
+
+      if (room.state.waitingForDeclaration) {
+        broadcastState(roomId);
+        setTimeout(() => executeBotTurn(roomId), 400);
+        return;
+      }
+
+      openMatchWindow(roomId);
+      return;
+    }
+    case 'play_double': {
+      const [s2, card1] = removeFromHand(room.state, bot.id, action.cardId1);
+      const [s3, card2] = removeFromHand(s2, bot.id, action.cardId2);
+      if (!card1 || !card2) break;
+      room.state = applyDouble(s3, bot.id, card1, card2);
+
+      if (room.state.waitingForDeclaration) {
+        broadcastState(roomId);
+        setTimeout(() => executeBotTurn(roomId), 400);
+        return;
+      }
+
+      openMatchWindow(roomId);
+      return;
+    }
+    case 'draw': {
+      if (room.state.pendingDrawCount > 0) {
+        // Forced wasp draw — advance turn
+        room.state = drawCards(room.state, bot.id, room.state.pendingDrawCount);
+        room.state = { ...room.state, pendingDrawCount: 0 };
+        room.state = advanceTurnSkippingInactive(room.state);
+        broadcastState(roomId);
+        scheduleBotTurnIfNeeded(roomId);
+      } else {
+        // Voluntary draw — then try to play the drawn card
+        room.state = drawCards(room.state, bot.id, 1);
+        room.state = { ...room.state, drawnThisTurn: true };
+        const updatedBot = room.state.players.find(p => p.id === bot.id);
+        const drawnCard = updatedBot?.hand[updatedBot.hand.length - 1];
+        if (drawnCard && canPlay(drawnCard, room.state)) {
+          const [s2, card] = removeFromHand(room.state, bot.id, drawnCard.id);
+          if (card) {
+            room.state = applyPlay(s2, bot.id, card);
+            if (room.state.waitingForDeclaration) {
+              broadcastState(roomId);
+              setTimeout(() => executeBotTurn(roomId), 400);
+              return;
+            }
+            openMatchWindow(roomId);
+            return;
+          }
+        }
+        // Cannot play drawn card — pass
+        room.state = advanceTurnSkippingInactive(room.state);
+        broadcastState(roomId);
+        scheduleBotTurnIfNeeded(roomId);
+      }
+      return;
+    }
+    case 'pass': {
+      room.state = advanceTurnSkippingInactive(room.state);
+      broadcastState(roomId);
+      scheduleBotTurnIfNeeded(roomId);
+      return;
+    }
+  }
 }
 
 // ── Socket handlers ────────────────────────────────────────────────────────────
@@ -128,6 +267,7 @@ io.on('connection', (socket: Socket) => {
       dealerIndex: 0,
       targetScore: targetScore || 50,
       matchWindowOpen: false,
+      spectators: [],
     };
     rooms.set(roomId, { id: roomId, hostId: socket.id, state });
     socket.join(roomId);
@@ -138,17 +278,56 @@ io.on('connection', (socket: Socket) => {
 
   // ── join_room ──
   socket.on('join_room', ({ roomId, playerName }: { roomId: string; playerName: string }) => {
-    const room = rooms.get(roomId.toUpperCase());
+    const rid = roomId.toUpperCase();
+    const room = rooms.get(rid);
     if (!room) { emitError('Room not found.'); return; }
-    if (room.state.phase !== 'lobby') { emitError('Game already started.'); return; }
-    if (room.state.players.length >= 9) { emitError('Room is full (max 9 players).'); return; }
 
-    const player = { id: socket.id, name: playerName.trim() || 'Player', hand: [], score: 0, connected: true, announcedLastCard: false };
-    room.state = { ...room.state, players: [...room.state.players, player] };
-    socket.join(roomId.toUpperCase());
-    currentRoomId = roomId.toUpperCase();
-    socket.emit('room_joined', { roomId: roomId.toUpperCase() });
-    broadcastRoomInfo(roomId.toUpperCase());
+    const name = playerName.trim() || 'Player';
+
+    if (room.state.phase === 'lobby') {
+      // Enforce name uniqueness in lobby
+      if (room.state.players.some(p => p.name === name)) {
+        emitError('That name is already taken in this room.'); return;
+      }
+      if (room.state.players.length >= 9) { emitError('Room is full (max 9 players).'); return; }
+
+      const player = { id: socket.id, name, hand: [], score: 0, connected: true, announcedLastCard: false };
+      room.state = { ...room.state, players: [...room.state.players, player] };
+      socket.join(rid);
+      currentRoomId = rid;
+      socket.emit('room_joined', { roomId: rid });
+      broadcastRoomInfo(rid);
+      return;
+    }
+
+    // Game in progress — check for reconnect
+    const disconnected = room.state.players.find(p => p.name === name && !p.connected && !p.isBot);
+    if (disconnected) {
+      const oldId = disconnected.id;
+      clearTimeout(disconnected.reconnectTimer);
+      disconnected.reconnectTimer = undefined;
+      disconnected.id = socket.id;
+      disconnected.connected = true;
+      // Transfer host if needed
+      if (room.hostId === oldId) room.hostId = socket.id;
+      socket.join(rid);
+      currentRoomId = rid;
+      socket.emit('room_joined', { roomId: rid });
+      broadcastRoomInfo(rid);
+      broadcastState(rid);
+      return;
+    }
+
+    // Otherwise join as spectator
+    room.state = {
+      ...room.state,
+      spectators: [...room.state.spectators, { id: socket.id, name }],
+    };
+    socket.join(rid);
+    currentRoomId = rid;
+    socket.emit('room_joined', { roomId: rid });
+    broadcastRoomInfo(rid);
+    broadcastState(rid);
   });
 
   // ── start_game ──
@@ -158,8 +337,52 @@ io.on('connection', (socket: Socket) => {
     const { room } = ctx;
     if (socket.id !== room.hostId) { emitError('Only the host can start the game.'); return; }
     if (room.state.players.length < 2) { emitError('Need at least 2 players.'); return; }
+
+    // Suggest bots if fewer than 4 human players
+    if (room.state.players.length < 4) {
+      socket.emit('suggest_bots', {
+        currentCount: room.state.players.length,
+        botsNeeded: 4 - room.state.players.length,
+      });
+      return;
+    }
+
     room.state = startRound(room.state);
     broadcastState(currentRoomId!);
+    scheduleBotTurnIfNeeded(currentRoomId!);
+  });
+
+  // ── confirm_bots ──
+  socket.on('confirm_bots', ({ confirm }: { confirm: boolean }) => {
+    const ctx = getRoomAndPlayer();
+    if (!ctx) return;
+    const { room } = ctx;
+    if (socket.id !== room.hostId) return;
+    if (room.state.phase !== 'lobby') return;
+
+    if (confirm) {
+      const botsNeeded = 4 - room.state.players.length;
+      const newBots = [];
+      for (let i = 0; i < botsNeeded; i++) {
+        const botNum = room.state.players.filter(p => p.isBot).length + i + 1;
+        newBots.push({
+          id: `bot_${botNum}`,
+          name: `Bot ${botNum}`,
+          hand: [],
+          score: 0,
+          connected: true,
+          announcedLastCard: false,
+          isBot: true as const,
+        });
+      }
+      room.state = { ...room.state, players: [...room.state.players, ...newBots] };
+      broadcastRoomInfo(currentRoomId!);
+    }
+
+    if (room.state.players.length < 2) { emitError('Need at least 2 players.'); return; }
+    room.state = startRound(room.state);
+    broadcastState(currentRoomId!);
+    scheduleBotTurnIfNeeded(currentRoomId!);
   });
 
   // ── play_card ──
@@ -268,17 +491,19 @@ io.on('connection', (socket: Socket) => {
       // Wasp penalty: draw all pending cards, then auto-advance turn
       s = drawCards(s, socket.id, s.pendingDrawCount);
       s = { ...s, pendingDrawCount: 0 };
-      s = advanceTurn(s);
+      s = advanceTurnSkippingInactive(s);
+      room.state = s;
+      broadcastState(currentRoomId!);
+      scheduleBotTurnIfNeeded(currentRoomId!);
     } else {
       // Voluntary draw: only allowed once per turn
       if (s.drawnThisTurn) { emitError('You already drew a card this turn.'); return; }
       s = drawCards(s, socket.id, 1);
       s = { ...s, drawnThisTurn: true };
+      room.state = s;
+      broadcastState(currentRoomId!);
       // Player can still play or pass; turn does NOT auto-advance
     }
-
-    room.state = s;
-    broadcastState(currentRoomId!);
   });
 
   // ── pass ──
@@ -293,9 +518,10 @@ io.on('connection', (socket: Socket) => {
     if (s.players[s.currentPlayerIndex].id !== socket.id) { emitError("It's not your turn."); return; }
     if (s.pendingDrawCount > 0) { emitError('You must draw your wasp cards first.'); return; }
 
-    s = advanceTurn(s);
+    s = advanceTurnSkippingInactive(s);
     room.state = s;
     broadcastState(currentRoomId!);
+    scheduleBotTurnIfNeeded(currentRoomId!);
   });
 
   // ── match_card ──
@@ -328,10 +554,11 @@ io.on('connection', (socket: Socket) => {
     // Place card and set turn to player AFTER the matcher
     const matcherIndex = s2.players.findIndex(p => p.id === socket.id);
     newState = { ...s2, playPile: [...s2.playPile, card], currentPlayerIndex: matcherIndex, matchWindowOpen: false };
-    newState = advanceTurn(newState);
+    newState = advanceTurnSkippingInactive(newState);
 
     room.state = checkRoundOver(newState);
     broadcastState(currentRoomId!);
+    scheduleBotTurnIfNeeded(currentRoomId!);
   });
 
   // ── announce_last_card ──
@@ -375,6 +602,7 @@ io.on('connection', (socket: Socket) => {
     if (room.state.phase !== 'round_over') return;
     room.state = startRound(room.state);
     broadcastState(currentRoomId!);
+    scheduleBotTurnIfNeeded(currentRoomId!);
   });
 
   // ── voice_join ──
@@ -410,14 +638,96 @@ io.on('connection', (socket: Socket) => {
     if (!currentRoomId) return;
     const room = rooms.get(currentRoomId);
     if (!room) return;
+    const roomId = currentRoomId;
+
+    // Check if this was a spectator
+    const specIdx = room.state.spectators.findIndex(s => s.id === socket.id);
+    if (specIdx !== -1) {
+      room.state = {
+        ...room.state,
+        spectators: room.state.spectators.filter(s => s.id !== socket.id),
+      };
+      broadcastRoomInfo(roomId);
+      return;
+    }
+
+    // Mark player as disconnected
     room.state = {
       ...room.state,
       players: room.state.players.map(p =>
         p.id === socket.id ? { ...p, connected: false } : p
       ),
     };
-    broadcastRoomInfo(currentRoomId);
-    broadcastState(currentRoomId);
+
+    const player = room.state.players.find(p => p.id === socket.id);
+    if (!player) { broadcastRoomInfo(roomId); return; }
+
+    if (room.state.phase === 'lobby') {
+      // In lobby: remove immediately, update host if needed
+      room.state = { ...room.state, players: room.state.players.filter(p => p.id !== socket.id) };
+      if (room.hostId === socket.id && room.state.players.length > 0) {
+        room.hostId = room.state.players[0].id;
+      }
+      broadcastRoomInfo(roomId);
+      broadcastState(roomId);
+      return;
+    }
+
+    // In game: if it's their turn, auto-advance
+    const s = room.state;
+    if (s.phase === 'playing' && s.players[s.currentPlayerIndex].id === socket.id) {
+      if (s.waitingForDeclaration) {
+        // Auto-resolve declaration randomly
+        const top = s.playPile[s.playPile.length - 1];
+        if (top?.power === 'dragon') {
+          room.state = applyDragonDeclaration(s, randItem(SYMBOLS));
+        } else if (top?.power === 'peacock') {
+          room.state = applyPeacockDeclaration(s, randItem(COLORS));
+        } else {
+          room.state = advanceTurnSkippingInactive(s);
+        }
+      } else {
+        room.state = advanceTurnSkippingInactive(s);
+      }
+      broadcastState(roomId);
+      scheduleBotTurnIfNeeded(roomId);
+    }
+
+    // Start 90-second reconnect grace period
+    const playerId = socket.id;
+    const timer = setTimeout(() => {
+      const r = rooms.get(roomId);
+      if (!r) return;
+      const removedIdx = r.state.players.findIndex(p => p.id === playerId);
+      if (removedIdx === -1) return; // already reconnected or removed
+
+      const newPlayers = r.state.players.filter(p => p.id !== playerId);
+      let newCurrentIdx = r.state.currentPlayerIndex;
+      if (removedIdx < newCurrentIdx) {
+        newCurrentIdx -= 1;
+      } else if (removedIdx === newCurrentIdx) {
+        newCurrentIdx = newCurrentIdx % Math.max(1, newPlayers.length);
+      }
+
+      r.state = { ...r.state, players: newPlayers, currentPlayerIndex: newCurrentIdx };
+
+      // End game if fewer than 2 active players remain
+      const activePlayers = newPlayers.filter(p => p.connected || p.isBot);
+      if (activePlayers.length < 2 && r.state.phase === 'playing') {
+        r.state = { ...r.state, phase: 'game_over' };
+      }
+
+      broadcastRoomInfo(roomId);
+      broadcastState(roomId);
+      scheduleBotTurnIfNeeded(roomId);
+    }, RECONNECT_MS);
+
+    // Store timer handle on the player object so reconnect can cancel it
+    const playerInState = room.state.players.find(p => p.id === playerId);
+    if (playerInState) playerInState.reconnectTimer = timer;
+
+    broadcastRoomInfo(roomId);
+    broadcastState(roomId);
   });
 });
 
