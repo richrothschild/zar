@@ -68,16 +68,14 @@ export default function Hand({ hand, state, isMyTurn }: HandProps) {
   function handleCardClick(card: CardType) {
     if (state.phase !== 'playing') return;
 
-    // Match window — out of turn match
-    if (state.matchWindowOpen && !isMyTurn) {
+    // Out-of-turn exact match — always allowed
+    if (!isMyTurn) {
       if (isMatchCard(card, state.topCard)) {
         socket.emit('match_card', { cardId: card.id });
         setSelectedId(null);
       }
       return;
     }
-
-    if (!isMyTurn) return;
 
     // Double play selection
     if (selectedId && selectedId !== card.id) {
@@ -143,7 +141,7 @@ export default function Hand({ hand, state, isMyTurn }: HandProps) {
   return (
     <div className="hand">
       {hand.map(card => {
-        const playable = isMyTurn ? canPlayCard(card, state) : (state.matchWindowOpen && isMatchCard(card, state.topCard));
+        const playable = isMyTurn ? canPlayCard(card, state) : isMatchCard(card, state.topCard);
         const isSelected = card.id === selectedId;
         return (
           <CardComponent

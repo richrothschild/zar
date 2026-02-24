@@ -531,7 +531,8 @@ io.on('connection', (socket: Socket) => {
     const { room, player } = ctx;
     const s = room.state;
 
-    if (!s.matchWindowOpen) { emitError('Match window has closed.'); return; }
+    if (s.phase !== 'playing') return;
+    if (s.waitingForDeclaration) return;
     if (s.players[s.currentPlayerIndex].id === socket.id) { emitError("It's your turn — play normally."); return; }
 
     const top = s.playPile[s.playPile.length - 1];
