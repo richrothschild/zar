@@ -99,13 +99,17 @@ export function startRound(state: GameState): GameState {
     activeCommand = topCard.command;
   }
 
+  // Dealer rotates left each round; first round host (index 0) deals
+  const currentDealerIndex = state.dealerIndex ?? 0;
+  const nextDealerIndex = (currentDealerIndex + 1) % state.players.length;
+
   return {
     ...state,
     phase: 'playing',
     players,
     drawPile,
     playPile,
-    currentPlayerIndex: 0,
+    currentPlayerIndex: currentDealerIndex, // dealer goes first
     direction: 'cw',
     pendingDrawCount: 0,
     skipsRemaining: 0,
@@ -116,6 +120,7 @@ export function startRound(state: GameState): GameState {
     activeCommand,
     waitingForDeclaration: false,
     drawnThisTurn: false,
+    dealerIndex: nextDealerIndex, // stored for the NEXT round
     roundWinnerId: undefined,
     matchWindowOpen: false,
   };
@@ -123,7 +128,9 @@ export function startRound(state: GameState): GameState {
 
 // ── Turn Actions ───────────────────────────────────────────────────────────────
 
-/** Draw `count` cards from the draw pile into a player's hand. Reshuffles if needed. */
+/** Draw `count` cards from the draw pile into a player's hand.
+ *  When draw pile drops below 10, play pile cards (except the top) are
+ *  appended to the bottom of the draw pile without shuffling. */
 export function drawCards(state: GameState, playerId: string, count: number): GameState {
   let s = { ...state, players: state.players.map(p => ({ ...p, hand: [...p.hand] })) };
   const player = s.players.find(p => p.id === playerId);
@@ -131,14 +138,25 @@ export function drawCards(state: GameState, playerId: string, count: number): Ga
 
   let drawPile = [...s.drawPile];
 
+  // Proactive refill: when draw pile < 10, append play pile (except top) to bottom
+  if (drawPile.length < 10 && s.playPile.length > 1) {
+    const top = s.playPile[s.playPile.length - 1];
+    drawPile = [...drawPile, ...s.playPile.slice(0, -1)]; // append, no shuffle
+    s = { ...s, playPile: [top] };
+  }
+
   for (let i = 0; i < count; i++) {
     if (drawPile.length === 0) {
-      // Reshuffle play pile (keep top card)
-      const top = s.playPile[s.playPile.length - 1];
-      drawPile = shuffle(s.playPile.slice(0, -1));
-      s = { ...s, playPile: [top] };
+      // Absolute fallback: if pile still empty, shuffle whatever play pile remains
+      if (s.playPile.length > 1) {
+        const top = s.playPile[s.playPile.length - 1];
+        drawPile = shuffle(s.playPile.slice(0, -1));
+        s = { ...s, playPile: [top] };
+      } else {
+        break; // truly nothing left
+      }
     }
-    if (drawPile.length === 0) break; // truly empty
+    if (drawPile.length === 0) break;
     player.hand.push(drawPile.shift()!);
   }
 
@@ -333,6 +351,7 @@ export function buildClientState(state: GameState, requestingPlayerId: string): 
     activeCommand: state.activeCommand,
     waitingForDeclaration: state.waitingForDeclaration,
     drawnThisTurn: state.drawnThisTurn,
+    dealerIndex: state.dealerIndex ?? 0,
     targetScore: state.targetScore,
     roundWinnerId: state.roundWinnerId,
     matchWindowOpen: state.matchWindowOpen,

@@ -5,6 +5,7 @@ import Hand from './Hand';
 import PlayerList from './PlayerList';
 import DragonModal from './DragonModal';
 import PeacockModal from './PeacockModal';
+import VoiceChat from './VoiceChat';
 
 interface GameBoardProps {
   state: ClientGameState;
@@ -70,7 +71,7 @@ export default function GameBoard({ state, myId, hostId }: GameBoardProps) {
 
   return (
     <div className="board">
-      {/* Left sidebar — player list */}
+      {/* Left sidebar — player list + voice chat */}
       <aside className="board__sidebar">
         <PlayerList state={state} myId={myId} />
         {state.matchWindowOpen && (
@@ -78,6 +79,7 @@ export default function GameBoard({ state, myId, hostId }: GameBoardProps) {
             ⚡ Match window! Play a matching card!
           </div>
         )}
+        <VoiceChat players={state.players} myId={myId} />
       </aside>
 
       {/* Center — play area */}

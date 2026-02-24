@@ -43,6 +43,7 @@ export interface GameState {
   activeCommand?: CommandKind; // command of last command card
   waitingForDeclaration: boolean; // dragon/peacock waiting for choice
   drawnThisTurn: boolean;     // player already drew voluntarily this turn
+  dealerIndex: number;        // whose turn it is to deal (rotates each round)
   targetScore: number;
   roundWinnerId?: string;
   matchWindowOpen: boolean;   // brief window for out-of-turn matches
@@ -65,6 +66,7 @@ export interface ClientGameState {
   activeCommand?: CommandKind;
   waitingForDeclaration: boolean;
   drawnThisTurn: boolean;
+  dealerIndex: number;
   targetScore: number;
   roundWinnerId?: string;
   matchWindowOpen: boolean;

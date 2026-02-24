@@ -45,6 +45,7 @@ export interface ClientGameState {
   activeCommand?: CommandKind;
   waitingForDeclaration: boolean;
   drawnThisTurn: boolean;
+  dealerIndex: number;
   targetScore: number;
   roundWinnerId?: string;
   matchWindowOpen: boolean;

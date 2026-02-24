@@ -27,6 +27,22 @@ app.use((_req, res) => res.sendFile(join(distPath, 'index.html')));
 // ── In-memory store ────────────────────────────────────────────────────────────
 const rooms = new Map<string, Room>();
 
+// ── Voice chat participants ─────────────────────────────────────────────────────
+const voiceRooms = new Map<string, Set<string>>(); // roomId → Set<socketId>
+
+function removeFromVoice(socketId: string) {
+  for (const [roomId, participants] of voiceRooms.entries()) {
+    if (participants.has(socketId)) {
+      participants.delete(socketId);
+      for (const peerId of participants) {
+        io.to(peerId).emit('voice_peer_left', { peerId: socketId });
+      }
+      if (participants.size === 0) voiceRooms.delete(roomId);
+      break;
+    }
+  }
+}
+
 function genRoomId(): string {
   return Math.random().toString(36).substring(2, 7).toUpperCase();
 }
@@ -109,6 +125,7 @@ io.on('connection', (socket: Socket) => {
       skipsRemaining: 0,
       waitingForDeclaration: false,
       drawnThisTurn: false,
+      dealerIndex: 0,
       targetScore: targetScore || 50,
       matchWindowOpen: false,
     };
@@ -360,8 +377,36 @@ io.on('connection', (socket: Socket) => {
     broadcastState(currentRoomId!);
   });
 
+  // ── voice_join ──
+  socket.on('voice_join', () => {
+    if (!currentRoomId) return;
+    if (!voiceRooms.has(currentRoomId)) voiceRooms.set(currentRoomId, new Set());
+    const participants = voiceRooms.get(currentRoomId)!;
+    const existingPeers = [...participants].filter(id => id !== socket.id);
+    participants.add(socket.id);
+    // Send the joiner the list of existing participants so they can initiate offers
+    socket.emit('voice_peer_list', { peers: existingPeers });
+    // Notify existing participants that someone new joined
+    existingPeers.forEach(peerId => io.to(peerId).emit('voice_peer_joined', { peerId: socket.id }));
+  });
+
+  // ── voice_leave ──
+  socket.on('voice_leave', () => { removeFromVoice(socket.id); });
+
+  // ── WebRTC signaling relay ──
+  socket.on('voice_offer', ({ targetId, offer }: { targetId: string; offer: unknown }) => {
+    io.to(targetId).emit('voice_offer', { fromId: socket.id, offer });
+  });
+  socket.on('voice_answer', ({ targetId, answer }: { targetId: string; answer: unknown }) => {
+    io.to(targetId).emit('voice_answer', { fromId: socket.id, answer });
+  });
+  socket.on('voice_ice', ({ targetId, candidate }: { targetId: string; candidate: unknown }) => {
+    io.to(targetId).emit('voice_ice', { fromId: socket.id, candidate });
+  });
+
   // ── disconnect ──
   socket.on('disconnect', () => {
+    removeFromVoice(socket.id);
     if (!currentRoomId) return;
     const room = rooms.get(currentRoomId);
     if (!room) return;
