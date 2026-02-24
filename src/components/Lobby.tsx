@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { socket } from '../socket';
 import type { RoomInfo } from '../types';
+import HelpModal from './HelpModal';
+
+type HelpTab = 'start' | 'rules' | 'tips';
 
 interface LobbyProps {
   roomInfo: RoomInfo | null;
@@ -14,6 +17,8 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
   const [targetScore, setTargetScore] = useState(50);
   const [error, setError] = useState('');
   const [step, setStep] = useState<'name' | 'room'>('name');
+  const [helpTab, setHelpTab] = useState<HelpTab | null>(null);
+
   function submitName() {
     if (!playerName.trim()) { setError('Enter your name.'); return; }
     setError('');
@@ -37,6 +42,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
   if (roomInfo) {
     return (
       <div className="lobby">
+        {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
         <h1 className="lobby__title">ZAR</h1>
         <div className="lobby__room-code">
           Room Code: <strong>{roomInfo.roomId}</strong>
@@ -74,6 +80,12 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
         ) : (
           <p className="lobby__waiting">Waiting for host to start the game…</p>
         )}
+
+        <div className="lobby__help-buttons">
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>How to Get Started</button>
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('rules')}>Rules</button>
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('tips')}>Tips</button>
+        </div>
       </div>
     );
   }
@@ -82,6 +94,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
   if (step === 'name') {
     return (
       <div className="lobby lobby--centered">
+        {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
         <h1 className="lobby__title">ZAR</h1>
         <p className="lobby__tagline">The addictive card game!</p>
         {error && <p className="lobby__error">{error}</p>}
@@ -95,6 +108,12 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
           autoFocus
         />
         <button className="btn btn--primary" onClick={submitName}>Continue</button>
+
+        <div className="lobby__help-buttons">
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>How to Get Started</button>
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('rules')}>Rules</button>
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('tips')}>Tips</button>
+        </div>
       </div>
     );
   }
@@ -102,6 +121,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
   // Create or join
   return (
     <div className="lobby lobby--centered">
+      {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
       <h1 className="lobby__title">ZAR</h1>
       <p className="lobby__player-name">Playing as: <strong>{playerName}</strong></p>
       {error && <p className="lobby__error">{error}</p>}
@@ -130,6 +150,12 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
           />
           <button className="btn btn--secondary" onClick={handleJoin}>Join Room</button>
         </div>
+      </div>
+
+      <div className="lobby__help-buttons">
+        <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>How to Get Started</button>
+        <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('rules')}>Rules</button>
+        <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('tips')}>Tips</button>
       </div>
     </div>
   );

@@ -353,6 +353,31 @@
 .voice-chat__users { margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.2rem; }
 .voice-chat__user { font-size: 0.75rem; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* ── Help modal ────────────────────────────────────────────── */
+.help-modal { max-width: 640px; width: 95%; max-height: 85vh; display: flex; flex-direction: column; padding: 0; text-align: left; position: relative; }
+.help-modal__close { position: absolute; top: 0.75rem; right: 0.75rem; background: none; border: none; color: #aaa; font-size: 1.1rem; cursor: pointer; line-height: 1; padding: 4px 8px; z-index: 1; }
+.help-modal__close:hover { color: #fff; }
+.help-modal__tabs { display: flex; border-bottom: 1px solid rgba(255,255,255,0.1); padding: 1rem 1rem 0; gap: 0.25rem; flex-shrink: 0; }
+.help-tab { background: none; border: none; color: #888; font-size: 0.85rem; font-weight: 600; padding: 0.5rem 1rem; cursor: pointer; border-radius: 8px 8px 0 0; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
+.help-tab:hover { color: #ccc; }
+.help-tab--active { color: #fff; border-bottom-color: #7c6af7; }
+.help-modal__content { overflow-y: auto; padding: 1.25rem 1.5rem 1.5rem; flex: 1; }
+.help-section h2 { font-size: 1.3rem; margin: 0 0 1rem; }
+.help-section h3 { font-size: 0.9rem; font-weight: 700; color: #b8aaff; margin: 1.25rem 0 0.3rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.help-section p { font-size: 0.875rem; color: #bbb; margin: 0 0 0.5rem; line-height: 1.55; }
+.help-section ul { margin: 0 0 0.5rem 1.25rem; padding: 0; }
+.help-section li { font-size: 0.875rem; color: #bbb; margin-bottom: 0.4rem; line-height: 1.5; }
+.help-section strong { color: #e0e0e0; }
+.help-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin: 0.5rem 0; }
+.help-table th { text-align: left; color: #888; font-weight: 600; padding: 0.3rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.help-table td { color: #bbb; padding: 0.3rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.help-note { font-size: 0.75rem !important; color: #666 !important; }
+.board__rules-btn { font-size: 0.75rem; padding: 0.3rem 0.6rem; min-height: 28px; margin-top: 0.75rem; width: 100%; opacity: 0.7; }
+.board__rules-btn:hover { opacity: 1; }
+.lobby__help-buttons { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; margin-top: 2rem; }
+.lobby__help-btn { font-size: 0.8rem; padding: 0.4rem 0.9rem; min-height: 36px; opacity: 0.75; }
+.lobby__help-btn:hover { opacity: 1; }
+
 /* ── Hand ──────────────────────────────────────────────────── */
 .hand {
   display: flex;

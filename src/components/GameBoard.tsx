@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ClientGameState, ClientPlayer } from '../types';
 import { socket } from '../socket';
 import CardComponent, { SYMBOL_EMOJI, COLOR_HEX } from './Card';
@@ -6,6 +7,7 @@ import PlayerList from './PlayerList';
 import DragonModal from './DragonModal';
 import PeacockModal from './PeacockModal';
 import VoiceChat from './VoiceChat';
+import HelpModal from './HelpModal';
 
 interface GameBoardProps {
   state: ClientGameState;
@@ -15,6 +17,7 @@ interface GameBoardProps {
 }
 
 export default function GameBoard({ state, myId, hostId, isSpectator }: GameBoardProps) {
+  const [showHelp, setShowHelp] = useState(false);
   const me = state.players.find(p => p.id === myId);
   const isMyTurn = !isSpectator && state.players[state.currentPlayerIndex]?.id === myId;
   const isHost = myId === hostId;
@@ -72,6 +75,8 @@ export default function GameBoard({ state, myId, hostId, isSpectator }: GameBoar
 
   return (
     <div className="board">
+      {showHelp && <HelpModal initialTab="rules" onClose={() => setShowHelp(false)} />}
+
       {/* Left sidebar — player list + voice chat */}
       <aside className="board__sidebar">
         <PlayerList state={state} myId={myId} />
@@ -81,6 +86,9 @@ export default function GameBoard({ state, myId, hostId, isSpectator }: GameBoar
           </div>
         )}
         <VoiceChat players={state.players} spectators={state.spectators} myId={myId} />
+        <button className="btn btn--ghost board__rules-btn" onClick={() => setShowHelp(true)}>
+          Rules &amp; Tips
+        </button>
       </aside>
 
       {/* Center — play area */}
