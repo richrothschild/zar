@@ -8,7 +8,7 @@ import {
   startRound, drawCards, removeFromHand, applyPlay, applyDouble,
   applyDragonDeclaration, applyPeacockDeclaration,
   checkRoundOver, buildClientState, canPlay, isMatch, isDouble,
-  advanceTurn, advanceTurnSkippingInactive,
+  advanceTurnSkippingInactive,
 } from './gameLogic.js';
 import { computeBotAction } from './botLogic.js';
 
@@ -544,17 +544,31 @@ io.on('connection', (socket: Socket) => {
     clearTimeout(matchTimers.get(currentRoomId!));
     matchTimers.delete(currentRoomId!);
 
-    // The matched player draws 1 penalty card
     const matchedPlayer = s.players[s.currentPlayerIndex];
-    let newState = drawCards(s, matchedPlayer.id, 1);
 
-    // Remove card from matcher's hand and play it
-    const [s2, card] = removeFromHand(newState, socket.id, cardId);
+    // Remove card from matcher's hand
+    const [s2, card] = removeFromHand(s, socket.id, cardId);
     if (!card) return;
 
-    // Place card and set turn to player AFTER the matcher
     const matcherIndex = s2.players.findIndex(p => p.id === socket.id);
-    newState = { ...s2, playPile: [...s2.playPile, card], currentPlayerIndex: matcherIndex, matchWindowOpen: false };
+
+    if (card.kind === 'command' && card.command === 'wasp') {
+      // Wasp match: stack the draw count, no penalty for the player who played the wasp.
+      // Set current player to matcher so applyPlay's advanceTurn goes to the player after them.
+      const stateForMatch = { ...s2, currentPlayerIndex: matcherIndex, matchWindowOpen: false };
+      const waspState = applyPlay(stateForMatch, socket.id, card);
+      room.state = checkRoundOver(waspState);
+      if (room.state.phase === 'playing') {
+        openMatchWindow(currentRoomId!);
+      } else {
+        broadcastState(currentRoomId!);
+      }
+      return;
+    }
+
+    // Normal match: penalty draw for original player, then place card
+    let newState = drawCards(s2, matchedPlayer.id, 1);
+    newState = { ...newState, playPile: [...newState.playPile, card], currentPlayerIndex: matcherIndex, matchWindowOpen: false };
     newState = advanceTurnSkippingInactive(newState);
 
     room.state = checkRoundOver(newState);

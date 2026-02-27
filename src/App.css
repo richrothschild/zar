@@ -282,6 +282,12 @@
   align-items: center;
   gap: 4px;
 }
+.board__direction {
+  font-size: 0.75rem;
+  color: #888;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
 .board__piles {
   display: flex;
   gap: 3rem;
@@ -389,7 +395,6 @@
 
 /* ── Player list ───────────────────────────────────────────── */
 .player-list { display: flex; flex-direction: column; gap: 0.5rem; }
-.player-list__direction { font-size: 0.75rem; color: #888; margin-bottom: 0.5rem; }
 .player-row {
   display: flex;
   align-items: center;
@@ -513,7 +518,6 @@
     flex-wrap: nowrap;
     min-width: max-content;
   }
-  .player-list__direction { display: none; }
 
   /* Compact player chips */
   .player-row {

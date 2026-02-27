@@ -43,14 +43,14 @@ export default function GameBoard({ state, myId, hostId, isSpectator }: GameBoar
       <span className="board__declared">
         Symbol: {SYMBOL_EMOJI[state.declaredSymbol]} {state.declaredSymbol}
         {state.activeColor && (
-          <> &nbsp;|&nbsp; Color: <span className="color-dot" style={{ background: COLOR_HEX[state.activeColor] }} /></>
+          <> &nbsp;|&nbsp; <span className="color-dot" style={{ background: COLOR_HEX[state.activeColor] }} /></>
         )}
       </span>
     );
   } else if (state.declaredColor) {
     activeDisplay = (
       <span className="board__declared">
-        Color: <span className="color-dot" style={{ background: COLOR_HEX[state.declaredColor] }} />
+        <span className="color-dot" style={{ background: COLOR_HEX[state.declaredColor] }} />
         {state.activeSymbol && <> &nbsp;|&nbsp; Symbol: {SYMBOL_EMOJI[state.activeSymbol]}</>}
         {!state.activeSymbol && state.activeCommand && <> &nbsp;|&nbsp; {state.activeCommand.toUpperCase()}</>}
       </span>
@@ -104,6 +104,10 @@ export default function GameBoard({ state, myId, hostId, isSpectator }: GameBoar
             <span className="board__wasp-warning"> 🐝 Draw {state.pendingDrawCount} (or play a Wasp)</span>
           )}
           {activeDisplay}
+        </div>
+
+        <div className="board__direction">
+          {state.direction === 'cw' ? '↻ Clockwise' : '↺ Counter-CW'}
         </div>
 
         <div className="board__piles">

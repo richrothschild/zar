@@ -11,9 +11,6 @@ export default function PlayerList({ state, myId }: PlayerListProps) {
 
   return (
     <div className="player-list">
-      <div className="player-list__direction">
-        Direction: {state.direction === 'cw' ? '↻ Clockwise' : '↺ Counter-CW'}
-      </div>
       {state.players.map((p) => (
         <PlayerRow
           key={p.id}
