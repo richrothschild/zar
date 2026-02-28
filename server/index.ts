@@ -249,6 +249,18 @@ io.on('connection', (socket: Socket) => {
     socket.emit('error', { message: msg });
   }
 
+  // ── get_rooms ── returns open lobby rooms so the client can show a "join?" prompt
+  socket.on('get_rooms', () => {
+    const available: { roomId: string; hostName: string; playerCount: number }[] = [];
+    for (const [roomId, room] of rooms.entries()) {
+      if (room.state.phase !== 'lobby') continue;
+      if (room.state.players.length >= 9) continue;
+      const host = room.state.players.find(p => p.id === room.hostId);
+      available.push({ roomId, hostName: host?.name ?? 'Host', playerCount: room.state.players.length });
+    }
+    socket.emit('rooms_available', { rooms: available });
+  });
+
   // ── create_room ──
   socket.on('create_room', ({ playerName, targetScore }: { playerName: string; targetScore: number }) => {
     const roomId = genRoomId();

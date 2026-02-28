@@ -4,7 +4,9 @@ import type { RoomInfo } from '../types';
 import HelpModal from './HelpModal';
 
 type HelpTab = 'start' | 'rules' | 'tips';
-type Step = 'name' | 'ask_host' | 'no_link';
+type Step = 'name' | 'checking' | 'pick_room' | 'ask_host' | 'no_link';
+
+interface AvailableRoom { roomId: string; hostName: string; playerCount: number; }
 
 interface LobbyProps {
   roomInfo: RoomInfo | null;
@@ -26,6 +28,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
   const [error, setError] = useState('');
   const [step, setStep] = useState<Step>('name');
   const [helpTab, setHelpTab] = useState<HelpTab | null>(null);
+  const [availableRooms, setAvailableRooms] = useState<AvailableRoom[]>([]);
 
   const roomCode = getRoomCodeFromUrl();
   const isHost = roomInfo?.hostId === myId;
@@ -34,17 +37,37 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
     if (!playerName.trim()) { setError('Enter your name.'); return; }
     setError('');
     if (roomCode) {
+      // Invited via link — join directly
       socket.connect();
       socket.emit('join_room', { roomId: roomCode, playerName: playerName.trim() });
     } else {
-      // No invite link — ask if they want to host
-      setStep('ask_host');
+      // No link — check for open rooms first
+      if (!socket.connected) socket.connect();
+      setStep('checking');
+      socket.once('rooms_available', ({ rooms }: { rooms: AvailableRoom[] }) => {
+        if (rooms.length > 0) {
+          setAvailableRooms(rooms);
+          setStep('pick_room');
+        } else {
+          setStep('ask_host');
+        }
+      });
+      socket.emit('get_rooms');
     }
   }
 
+  function handleJoinRoom(roomId: string) {
+    socket.emit('join_room', { roomId, playerName: playerName.trim() });
+  }
+
   function handleCreateRoom() {
-    socket.connect();
+    if (!socket.connected) socket.connect();
     socket.emit('create_room', { playerName: playerName.trim(), targetScore });
+  }
+
+  function goBackToName() {
+    socket.off('rooms_available'); // cancel any pending listener
+    setStep('name');
   }
 
   // ── In-room lobby ───────────────────────────────────────────
@@ -120,13 +143,77 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
     );
   }
 
-  // ── No invite link: ask if they want to host ────────────────
+  // ── Checking for open rooms ──────────────────────────────────
+  if (step === 'checking') {
+    return (
+      <div className="lobby lobby--centered">
+        <h1 className="lobby__title">ZAR</h1>
+        <p className="lobby__tagline">Looking for open games…</p>
+      </div>
+    );
+  }
+
+  // ── Open rooms found: ask to join ────────────────────────────
+  if (step === 'pick_room') {
+    return (
+      <div className="lobby lobby--centered">
+        {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
+        <h1 className="lobby__title">ZAR</h1>
+        <p className="lobby__tagline">Hi <strong>{playerName}</strong>!</p>
+
+        {availableRooms.length === 1 ? (
+          <>
+            <p className="lobby__tagline" style={{ fontSize: '1rem' }}>
+              Join <strong>{availableRooms[0].hostName}</strong>'s game?{' '}
+              <span className="lobby__hint" style={{ display: 'inline' }}>
+                ({availableRooms[0].playerCount} player{availableRooms[0].playerCount !== 1 ? 's' : ''})
+              </span>
+            </p>
+            <div className="lobby__ask-host-actions">
+              <button className="btn btn--primary" onClick={() => handleJoinRoom(availableRooms[0].roomId)}>
+                Yes, join!
+              </button>
+              <button className="btn btn--ghost" onClick={() => setStep('ask_host')}>
+                No, create my own game
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="lobby__tagline" style={{ fontSize: '1rem' }}>Pick a game to join:</p>
+            <div className="lobby__room-list">
+              {availableRooms.map(r => (
+                <button
+                  key={r.roomId}
+                  className="btn btn--primary lobby__room-option"
+                  onClick={() => handleJoinRoom(r.roomId)}
+                >
+                  {r.hostName}'s game &nbsp;
+                  <span className="lobby__room-count">({r.playerCount} player{r.playerCount !== 1 ? 's' : ''})</span>
+                </button>
+              ))}
+              <button className="btn btn--ghost" onClick={() => setStep('ask_host')}>
+                Create my own game
+              </button>
+            </div>
+          </>
+        )}
+
+        <div className="lobby__help-buttons">
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>How to Get Started</button>
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('rules')}>Rules</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── No rooms found: ask if they want to host ─────────────────
   if (step === 'ask_host') {
     return (
       <div className="lobby lobby--centered">
         {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
         <h1 className="lobby__title">ZAR</h1>
-        <p className="lobby__tagline">Hi <strong>{playerName}</strong>! No game found to join.</p>
+        <p className="lobby__tagline">Hi <strong>{playerName}</strong>! No open games found.</p>
         <p className="lobby__tagline" style={{ fontSize: '1rem' }}>Would you like to host a new game?</p>
 
         <div className="lobby__ask-host-actions">
@@ -151,19 +238,19 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
     );
   }
 
-  // ── No invite link and declined hosting ─────────────────────
+  // ── No invite link and declined hosting ──────────────────────
   if (step === 'no_link') {
     return (
       <div className="lobby lobby--centered">
         <h1 className="lobby__title">ZAR</h1>
         <p className="lobby__tagline">Ask the host to share their invite link with you.</p>
         <p className="lobby__hint">The host will see a <strong>"📋 Copy invite link"</strong> button in their lobby.</p>
-        <button className="btn btn--ghost" onClick={() => setStep('name')}>← Back</button>
+        <button className="btn btn--ghost" onClick={goBackToName}>← Back</button>
       </div>
     );
   }
 
-  // ── Default: enter name + join ──────────────────────────────
+  // ── Default: enter name ──────────────────────────────────────
   return (
     <div className="lobby lobby--centered">
       {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
