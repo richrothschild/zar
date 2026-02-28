@@ -170,7 +170,7 @@ export default function GameBoard({ state, myId, hostId, isSpectator }: GameBoar
 
       {/* ── Secondary bar: voice + help ── */}
       <div className="board__secondary-bar">
-        <VoiceChat players={state.players} spectators={state.spectators} myId={myId} />
+        <VoiceChat myId={myId} />
         <button className="btn btn--ghost board__rules-btn" onClick={() => setShowHelp(true)}>
           Rules &amp; Tips
         </button>

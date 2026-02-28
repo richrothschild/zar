@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { socket } from '../socket';
-import type { ClientPlayer } from '../types';
 
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -9,12 +8,10 @@ const ICE_SERVERS = [
 ];
 
 interface VoiceChatProps {
-  players: ClientPlayer[];
-  spectators: { id: string; name: string }[];
   myId: string;
 }
 
-export default function VoiceChat({ players, spectators, myId }: VoiceChatProps) {
+export default function VoiceChat({ myId }: VoiceChatProps) {
   const [inVoice, setInVoice] = useState(false);
   const [muted, setMuted] = useState(false);
   const [voiceUserIds, setVoiceUserIds] = useState<string[]>([]);
@@ -25,12 +22,6 @@ export default function VoiceChat({ players, spectators, myId }: VoiceChatProps)
   const audiosRef = useRef(new Map<string, HTMLAudioElement>());
   // Buffer ICE candidates that arrive before remote description is set
   const pendingCandidatesRef = useRef(new Map<string, RTCIceCandidateInit[]>());
-
-  function getPlayerName(id: string) {
-    return players.find(p => p.id === id)?.name
-        ?? spectators.find(s => s.id === id)?.name
-        ?? 'Unknown';
-  }
 
   const removePeer = useCallback((peerId: string) => {
     const pc = peersRef.current.get(peerId);
