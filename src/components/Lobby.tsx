@@ -4,6 +4,7 @@ import type { RoomInfo } from '../types';
 import HelpModal from './HelpModal';
 
 type HelpTab = 'start' | 'rules' | 'tips';
+type Step = 'name' | 'ask_host' | 'no_link';
 
 interface LobbyProps {
   roomInfo: RoomInfo | null;
@@ -11,7 +12,6 @@ interface LobbyProps {
   onStartGame: () => void;
 }
 
-// Read ?room=XXXXX from the URL on page load
 function getRoomCodeFromUrl(): string {
   return new URLSearchParams(window.location.search).get('room')?.toUpperCase() ?? '';
 }
@@ -20,61 +20,51 @@ function inviteLink(roomId: string): string {
   return `${window.location.origin}${window.location.pathname}?room=${roomId}`;
 }
 
-function copyInviteLink(roomId: string) {
-  navigator.clipboard.writeText(inviteLink(roomId));
-}
-
 export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
   const [playerName, setPlayerName] = useState('');
-  // Pre-fill join code from URL so clicking an invite link auto-populates it
-  const [joinCode] = useState(getRoomCodeFromUrl);
   const [targetScore, setTargetScore] = useState(50);
   const [error, setError] = useState('');
+  const [step, setStep] = useState<Step>('name');
   const [helpTab, setHelpTab] = useState<HelpTab | null>(null);
 
-  const invitedRoomCode = joinCode; // non-empty when arriving via invite link
-
-  function handleJoin(name: string, code: string) {
-    if (!code.trim()) { setError('Enter a room code.'); return; }
-    socket.connect();
-    socket.emit('join_room', { roomId: code.trim().toUpperCase(), playerName: name.trim() });
-  }
-
-  function handleCreate(name: string) {
-    socket.connect();
-    socket.emit('create_room', { playerName: name.trim(), targetScore });
-  }
-
-  function submitName() {
-    if (!playerName.trim()) { setError('Enter your name.'); return; }
-    setError('');
-    if (invitedRoomCode) {
-      // Came via invite link — join directly, no extra screen
-      handleJoin(playerName, invitedRoomCode);
-    }
-    // Otherwise stay on current screen to show Create / Join options
-  }
-
+  const roomCode = getRoomCodeFromUrl();
   const isHost = roomInfo?.hostId === myId;
 
-  // ── In-room lobby ──────────────────────────────────────────
+  function handleJoin() {
+    if (!playerName.trim()) { setError('Enter your name.'); return; }
+    setError('');
+    if (roomCode) {
+      socket.connect();
+      socket.emit('join_room', { roomId: roomCode, playerName: playerName.trim() });
+    } else {
+      // No invite link — ask if they want to host
+      setStep('ask_host');
+    }
+  }
+
+  function handleCreateRoom() {
+    socket.connect();
+    socket.emit('create_room', { playerName: playerName.trim(), targetScore });
+  }
+
+  // ── In-room lobby ───────────────────────────────────────────
   if (roomInfo) {
     return (
       <div className="lobby">
         {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
         <h1 className="lobby__title">ZAR</h1>
 
-        <div className="lobby__room-code">
-          Room: <strong>{roomInfo.roomId}</strong>
-          <button
-            className="btn btn--ghost"
-            onClick={() => copyInviteLink(roomInfo.roomId)}
-            title="Copy invite link"
-          >
-            📋 Copy invite link
-          </button>
-        </div>
-        <p className="lobby__hint">Share the link above — friends click it and join instantly.</p>
+        {isHost && (
+          <div className="lobby__invite">
+            <button
+              className="btn btn--secondary lobby__invite-btn"
+              onClick={() => navigator.clipboard.writeText(inviteLink(roomInfo.roomId))}
+            >
+              📋 Copy invite link
+            </button>
+            <p className="lobby__hint">Share this link — friends click it and join instantly.</p>
+          </div>
+        )}
 
         <div className="lobby__players">
           <h3>Players ({roomInfo.players.length}/9)</h3>
@@ -84,8 +74,19 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
               {p.name}
               {p.id === myId ? ' (you)' : ''}
               {!p.connected ? ' (disconnected)' : ''}
+              {p.isBot ? ' 🤖' : ''}
             </div>
           ))}
+          {roomInfo.spectators?.length > 0 && (
+            <>
+              <h3 style={{ marginTop: '1rem' }}>Watching</h3>
+              {roomInfo.spectators.map(s => (
+                <div key={s.id} className="lobby__player" style={{ opacity: 0.6 }}>
+                  👁 {s.name}
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
         {isHost ? (
@@ -102,10 +103,12 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
             >
               Start Game
             </button>
-            {roomInfo.players.length < 2 && <p className="lobby__hint">Need at least 2 players.</p>}
+            {roomInfo.players.length < 2 && (
+              <p className="lobby__hint">Need at least 2 players. Share your invite link!</p>
+            )}
           </div>
         ) : (
-          <p className="lobby__waiting">Waiting for host to start the game…</p>
+          <p className="lobby__waiting">Waiting for the host to start…</p>
         )}
 
         <div className="lobby__help-buttons">
@@ -117,39 +120,60 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
     );
   }
 
-  // ── Invite link landing: just ask for a name, then auto-join ──
-  if (invitedRoomCode) {
+  // ── No invite link: ask if they want to host ────────────────
+  if (step === 'ask_host') {
     return (
       <div className="lobby lobby--centered">
         {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
         <h1 className="lobby__title">ZAR</h1>
-        <p className="lobby__tagline">You're invited to join room <strong>{invitedRoomCode}</strong></p>
-        {error && <p className="lobby__error">{error}</p>}
-        <input
-          className="lobby__input"
-          placeholder="Your name"
-          value={playerName}
-          onChange={e => setPlayerName(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && submitName()}
-          maxLength={20}
-          autoFocus
-        />
-        <button className="btn btn--primary" onClick={submitName}>Join Game</button>
+        <p className="lobby__tagline">Hi <strong>{playerName}</strong>! No game found to join.</p>
+        <p className="lobby__tagline" style={{ fontSize: '1rem' }}>Would you like to host a new game?</p>
+
+        <div className="lobby__ask-host-actions">
+          <div className="lobby__score-setting">
+            <label>Play to: <strong>{targetScore}</strong> points</label>
+            <input type="range" min={25} max={200} step={25} value={targetScore}
+              onChange={e => setTargetScore(+e.target.value)} />
+          </div>
+          <button className="btn btn--primary" onClick={handleCreateRoom}>
+            Yes, I'll host
+          </button>
+          <button className="btn btn--ghost" onClick={() => setStep('no_link')}>
+            No, I need an invite link
+          </button>
+        </div>
 
         <div className="lobby__help-buttons">
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>How to Get Started</button>
           <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('rules')}>Rules</button>
-          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('tips')}>Tips</button>
         </div>
       </div>
     );
   }
 
-  // ── Default: enter name then create or join ─────────────────
+  // ── No invite link and declined hosting ─────────────────────
+  if (step === 'no_link') {
+    return (
+      <div className="lobby lobby--centered">
+        <h1 className="lobby__title">ZAR</h1>
+        <p className="lobby__tagline">Ask the host to share their invite link with you.</p>
+        <p className="lobby__hint">The host will see a <strong>"📋 Copy invite link"</strong> button in their lobby.</p>
+        <button className="btn btn--ghost" onClick={() => setStep('name')}>← Back</button>
+      </div>
+    );
+  }
+
+  // ── Default: enter name + join ──────────────────────────────
   return (
     <div className="lobby lobby--centered">
       {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
       <h1 className="lobby__title">ZAR</h1>
-      <p className="lobby__tagline">The addictive card game!</p>
+
+      {roomCode
+        ? <p className="lobby__tagline">You're invited! Enter your name to join.</p>
+        : <p className="lobby__tagline">The addictive card game!</p>
+      }
+
       {error && <p className="lobby__error">{error}</p>}
 
       <input
@@ -157,47 +181,14 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
         placeholder="Your name"
         value={playerName}
         onChange={e => setPlayerName(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter' && playerName.trim()) setError('');
-        }}
+        onKeyDown={e => e.key === 'Enter' && handleJoin()}
         maxLength={20}
         autoFocus
       />
 
-      <div className="lobby__actions">
-        <div className="lobby__action-block">
-          <h3>Create a Room</h3>
-          <div className="lobby__score-setting">
-            <label>Target score: <strong>{targetScore}</strong></label>
-            <input type="range" min={25} max={200} step={25} value={targetScore}
-              onChange={e => setTargetScore(+e.target.value)} />
-          </div>
-          <button
-            className="btn btn--primary"
-            onClick={() => {
-              if (!playerName.trim()) { setError('Enter your name first.'); return; }
-              setError('');
-              handleCreate(playerName);
-            }}
-          >
-            Create Room
-          </button>
-        </div>
-
-        <div className="lobby__divider">OR</div>
-
-        <div className="lobby__action-block">
-          <h3>Join with a code</h3>
-          <JoinByCode
-            playerName={playerName}
-            onJoin={(code) => {
-              if (!playerName.trim()) { setError('Enter your name first.'); return; }
-              setError('');
-              handleJoin(playerName, code);
-            }}
-          />
-        </div>
-      </div>
+      <button className="btn btn--primary" onClick={handleJoin}>
+        {roomCode ? 'Join Game' : 'Continue'}
+      </button>
 
       <div className="lobby__help-buttons">
         <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>How to Get Started</button>
@@ -205,25 +196,5 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
         <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('tips')}>Tips</button>
       </div>
     </div>
-  );
-}
-
-function JoinByCode({ playerName, onJoin }: { playerName: string; onJoin: (code: string) => void }) {
-  const [code, setCode] = useState('');
-  return (
-    <>
-      <input
-        className="lobby__input lobby__input--code"
-        placeholder="Room code"
-        value={code}
-        onChange={e => setCode(e.target.value.toUpperCase())}
-        onKeyDown={e => e.key === 'Enter' && onJoin(code)}
-        maxLength={5}
-      />
-      <button className="btn btn--secondary" onClick={() => onJoin(code)}
-        disabled={!playerName.trim() || code.length < 5}>
-        Join Room
-      </button>
-    </>
   );
 }
