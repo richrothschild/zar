@@ -116,7 +116,7 @@ function scheduleBotTurnIfNeeded(roomId: string) {
   const room = rooms.get(roomId);
   if (!room || room.state.phase !== 'playing') return;
   const cur = room.state.players[room.state.currentPlayerIndex];
-  if (cur?.isBot) setTimeout(() => executeBotTurn(roomId), 800);
+  if (cur?.isBot) setTimeout(() => executeBotTurn(roomId), 15000);
 }
 
 function executeBotTurn(roomId: string) {
@@ -191,12 +191,12 @@ function executeBotTurn(roomId: string) {
     }
     case 'draw': {
       if (room.state.pendingDrawCount > 0) {
-        // Forced wasp draw — advance turn
+        // Forced wasp draw — bot keeps turn to play or pass
         room.state = drawCards(room.state, bot.id, room.state.pendingDrawCount);
-        room.state = { ...room.state, pendingDrawCount: 0 };
-        room.state = advanceTurnSkippingInactive(room.state);
+        room.state = { ...room.state, pendingDrawCount: 0, drawnThisTurn: true };
         broadcastState(roomId);
-        scheduleBotTurnIfNeeded(roomId);
+        // Re-run bot logic so it can play a drawn card or pass
+        setTimeout(() => executeBotTurn(roomId), 1500);
       } else {
         // Voluntary draw — then try to play the drawn card
         room.state = drawCards(room.state, bot.id, 1);
@@ -488,13 +488,11 @@ io.on('connection', (socket: Socket) => {
     if (s.players[s.currentPlayerIndex].id !== socket.id) { emitError("It's not your turn."); return; }
 
     if (s.pendingDrawCount > 0) {
-      // Wasp penalty: draw all pending cards, then auto-advance turn
+      // Wasp penalty: draw all cards, but player keeps their turn to play or pass
       s = drawCards(s, socket.id, s.pendingDrawCount);
-      s = { ...s, pendingDrawCount: 0 };
-      s = advanceTurnSkippingInactive(s);
+      s = { ...s, pendingDrawCount: 0, drawnThisTurn: true };
       room.state = s;
       broadcastState(currentRoomId!);
-      scheduleBotTurnIfNeeded(currentRoomId!);
     } else {
       // Voluntary draw: only allowed once per turn
       if (s.drawnThisTurn) { emitError('You already drew a card this turn.'); return; }

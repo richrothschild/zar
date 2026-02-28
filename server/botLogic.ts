@@ -52,6 +52,7 @@ export function computeBotAction(state: GameState, botId: string): BotAction {
   const playable = bot.hand.find(c => canPlay(c, state));
   if (playable) return { type: 'play_card', cardId: playable.id };
 
-  // Nothing to play — draw one
+  // Nothing to play — draw once, then pass if already drew
+  if (state.drawnThisTurn) return { type: 'pass' };
   return { type: 'draw' };
 }

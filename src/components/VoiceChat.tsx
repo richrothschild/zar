@@ -5,6 +5,7 @@ import type { ClientPlayer } from '../types';
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
 ];
 
 interface VoiceChatProps {
@@ -22,6 +23,8 @@ export default function VoiceChat({ players, spectators, myId }: VoiceChatProps)
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef(new Map<string, RTCPeerConnection>());
   const audiosRef = useRef(new Map<string, HTMLAudioElement>());
+  // Buffer ICE candidates that arrive before remote description is set
+  const pendingCandidatesRef = useRef(new Map<string, RTCIceCandidateInit[]>());
 
   function getPlayerName(id: string) {
     return players.find(p => p.id === id)?.name
@@ -33,24 +36,31 @@ export default function VoiceChat({ players, spectators, myId }: VoiceChatProps)
     const pc = peersRef.current.get(peerId);
     if (pc) { pc.close(); peersRef.current.delete(peerId); }
     const audio = audiosRef.current.get(peerId);
-    if (audio) { audio.srcObject = null; audiosRef.current.delete(peerId); }
+    if (audio) { audio.pause(); audio.srcObject = null; audiosRef.current.delete(peerId); }
+    pendingCandidatesRef.current.delete(peerId);
     setVoiceUserIds(prev => prev.filter(id => id !== peerId));
   }, []);
 
+  // Flush ICE candidates buffered before remote description was ready
+  const flushCandidates = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
+    const pending = pendingCandidatesRef.current.get(peerId) ?? [];
+    pendingCandidatesRef.current.delete(peerId);
+    for (const candidate of pending) {
+      try { await pc.addIceCandidate(candidate); } catch { /* ignore */ }
+    }
+  }, []);
+
   const createPeer = useCallback((peerId: string): RTCPeerConnection => {
-    // Clean up any existing connection to this peer
     const old = peersRef.current.get(peerId);
     if (old) { old.close(); peersRef.current.delete(peerId); }
 
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     peersRef.current.set(peerId, pc);
 
-    // Add local audio tracks to the connection
     localStreamRef.current?.getTracks().forEach(track =>
       pc.addTrack(track, localStreamRef.current!)
     );
 
-    // Play incoming audio from this peer
     pc.ontrack = (event) => {
       let audio = audiosRef.current.get(peerId);
       if (!audio) {
@@ -59,9 +69,10 @@ export default function VoiceChat({ players, spectators, myId }: VoiceChatProps)
         audiosRef.current.set(peerId, audio);
       }
       audio.srcObject = event.streams[0];
+      // Explicitly call play() to handle browsers that block autoplay
+      audio.play().catch(() => {});
     };
 
-    // Forward ICE candidates through the server
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         socket.emit('voice_ice', { targetId: peerId, candidate: event.candidate });
@@ -69,28 +80,28 @@ export default function VoiceChat({ players, spectators, myId }: VoiceChatProps)
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed') removePeer(peerId);
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+        removePeer(peerId);
+      }
     };
 
     return pc;
   }, [removePeer]);
 
-  // Socket listeners for WebRTC signaling
   useEffect(() => {
-    // Server sends us the list of peers already in voice when we join
     const onPeerList = async ({ peers }: { peers: string[] }) => {
       setVoiceUserIds(prev => [...new Set([...prev, ...peers])]);
-      // We initiate the offer to each existing peer
       for (const peerId of peers) {
         const pc = createPeer(peerId);
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         socket.emit('voice_offer', { targetId: peerId, offer });
+        // Local ICE candidates begin flowing after setLocalDescription
       }
     };
 
-    // A new peer joined after us — they will send us an offer
     const onPeerJoined = ({ peerId }: { peerId: string }) => {
+      // They will send us an offer; just add to display list
       setVoiceUserIds(prev => [...new Set([...prev, peerId])]);
     };
 
@@ -98,11 +109,13 @@ export default function VoiceChat({ players, spectators, myId }: VoiceChatProps)
       removePeer(peerId);
     };
 
-    // Receive an offer from a peer who joined before us
     const onOffer = async ({ fromId, offer }: { fromId: string; offer: RTCSessionDescriptionInit }) => {
       if (!localStreamRef.current) return;
+      // Ensure sender is in the display list (guard against missed onPeerJoined)
+      setVoiceUserIds(prev => [...new Set([...prev, fromId])]);
       const pc = createPeer(fromId);
       await pc.setRemoteDescription(offer);
+      await flushCandidates(fromId, pc); // drain candidates that arrived early
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       socket.emit('voice_answer', { targetId: fromId, answer });
@@ -112,13 +125,20 @@ export default function VoiceChat({ players, spectators, myId }: VoiceChatProps)
       const pc = peersRef.current.get(fromId);
       if (pc && pc.signalingState !== 'stable') {
         await pc.setRemoteDescription(answer);
+        await flushCandidates(fromId, pc); // drain candidates buffered before answer
       }
     };
 
     const onIce = async ({ fromId, candidate }: { fromId: string; candidate: RTCIceCandidateInit }) => {
       const pc = peersRef.current.get(fromId);
-      if (pc) {
+      if (pc && pc.remoteDescription) {
+        // Remote description ready — add immediately
         try { await pc.addIceCandidate(candidate); } catch { /* ignore */ }
+      } else {
+        // Remote description not yet set — buffer for later
+        const pending = pendingCandidatesRef.current.get(fromId) ?? [];
+        pending.push(candidate);
+        pendingCandidatesRef.current.set(fromId, pending);
       }
     };
 
@@ -137,7 +157,7 @@ export default function VoiceChat({ players, spectators, myId }: VoiceChatProps)
       socket.off('voice_answer', onAnswer);
       socket.off('voice_ice', onIce);
     };
-  }, [createPeer, removePeer]);
+  }, [createPeer, removePeer, flushCandidates]);
 
   const leaveVoice = useCallback(() => {
     for (const peerId of [...peersRef.current.keys()]) removePeer(peerId);
@@ -149,7 +169,6 @@ export default function VoiceChat({ players, spectators, myId }: VoiceChatProps)
     setVoiceUserIds([]);
   }, [removePeer]);
 
-  // Clean up on unmount
   useEffect(() => {
     return () => { if (localStreamRef.current) leaveVoice(); };
   }, [leaveVoice]);
@@ -163,7 +182,7 @@ export default function VoiceChat({ players, spectators, myId }: VoiceChatProps)
       setVoiceUserIds([myId]);
       setError('');
     } catch {
-      setError('Microphone access denied.');
+      setError('Mic denied.');
     }
   }
 
@@ -173,39 +192,29 @@ export default function VoiceChat({ players, spectators, myId }: VoiceChatProps)
     setMuted(next);
   }
 
+  const inVoiceCount = voiceUserIds.length;
+
   return (
     <div className="voice-chat">
-      <div className="voice-chat__header">🎙️ Voice</div>
-
-      {error && <p className="voice-chat__error">{error}</p>}
+      {error && <span className="voice-chat__error">{error}</span>}
 
       {!inVoice ? (
-        <button className="btn btn--ghost voice-chat__btn" onClick={joinVoice}>
-          Join Voice
+        <button className="btn btn--ghost voice-chat__btn" onClick={joinVoice} title="Join voice chat">
+          🎙️ Voice{inVoiceCount > 0 ? ` (${inVoiceCount})` : ''}
         </button>
       ) : (
-        <div className="voice-chat__controls">
+        <>
           <button
             className={`btn voice-chat__btn ${muted ? 'btn--pass' : 'btn--draw'}`}
             onClick={toggleMute}
             title={muted ? 'Unmute' : 'Mute'}
           >
-            {muted ? '🔇 Muted' : '🎤 Live'}
+            {muted ? '🔇' : '🎤'} {inVoiceCount > 1 ? inVoiceCount : ''}
           </button>
-          <button className="btn btn--ghost voice-chat__btn" onClick={leaveVoice}>
-            Leave
+          <button className="btn btn--ghost voice-chat__btn" onClick={leaveVoice} title="Leave voice">
+            ✕
           </button>
-        </div>
-      )}
-
-      {voiceUserIds.length > 0 && (
-        <div className="voice-chat__users">
-          {voiceUserIds.map(id => (
-            <div key={id} className="voice-chat__user">
-              {muted && id === myId ? '🔇' : '🎤'} {getPlayerName(id)}{id === myId ? ' (you)' : ''}
-            </div>
-          ))}
-        </div>
+        </>
       )}
     </div>
   );
