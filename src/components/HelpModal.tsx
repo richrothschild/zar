@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-type HelpTab = 'start' | 'rules' | 'tips';
+type HelpTab = 'start' | 'rules' | 'tips' | 'issues';
 
 interface HelpModalProps {
   initialTab?: HelpTab;
@@ -16,15 +16,17 @@ export default function HelpModal({ initialTab = 'start', onClose }: HelpModalPr
         <button className="help-modal__close" onClick={onClose} aria-label="Close">✕</button>
 
         <div className="help-modal__tabs">
-          <button className={`help-tab${tab === 'start' ? ' help-tab--active' : ''}`} onClick={() => setTab('start')}>Getting Started</button>
-          <button className={`help-tab${tab === 'rules' ? ' help-tab--active' : ''}`} onClick={() => setTab('rules')}>Rules</button>
-          <button className={`help-tab${tab === 'tips'  ? ' help-tab--active' : ''}`} onClick={() => setTab('tips')}>Tips</button>
+          <button className={`help-tab${tab === 'start'  ? ' help-tab--active' : ''}`} onClick={() => setTab('start')}>Get Started</button>
+          <button className={`help-tab${tab === 'rules'  ? ' help-tab--active' : ''}`} onClick={() => setTab('rules')}>Rules</button>
+          <button className={`help-tab${tab === 'tips'   ? ' help-tab--active' : ''}`} onClick={() => setTab('tips')}>Tips</button>
+          <button className={`help-tab${tab === 'issues' ? ' help-tab--active' : ''}`} onClick={() => setTab('issues')}>Troubleshoot</button>
         </div>
 
         <div className="help-modal__content">
-          {tab === 'start' && <GettingStarted />}
-          {tab === 'rules' && <Rules />}
-          {tab === 'tips'  && <Tips />}
+          {tab === 'start'  && <GettingStarted />}
+          {tab === 'rules'  && <Rules />}
+          {tab === 'tips'   && <Tips />}
+          {tab === 'issues' && <Issues />}
         </div>
       </div>
     </div>
@@ -39,24 +41,38 @@ function GettingStarted() {
       <h3>1. Enter your name</h3>
       <p>Type your name on the home screen and click <strong>Continue</strong>.</p>
 
-      <h3>2. Create or join a room</h3>
-      <p><strong>Create Room</strong> — You become the host. Set the target score (25–200 points) and share the 5-letter room code with your friends.</p>
-      <p><strong>Join Room</strong> — Enter the room code your host shared and click <strong>Join Room</strong>.</p>
+      <h3>2. Join or host a game</h3>
+      <p><strong>Via invite link</strong> — If the host shared a link, just open it, enter your name, and you're in instantly.</p>
+      <p><strong>No link?</strong> — After entering your name, the game checks for open rooms automatically. If one exists you'll see: "Join [Host]'s game?" — click <strong>Yes, join!</strong> to enter. If no rooms are open, you'll be asked to host; click <strong>Yes, I'll host</strong> to create a room.</p>
 
       <h3>3. Wait in the lobby</h3>
-      <p>The lobby shows everyone who has joined. You need at least 2 players. The host can start the game at any time.</p>
+      <p>The lobby shows everyone who has joined. You need at least 2 players. The host clicks <strong>Start Game</strong> when everyone is ready. As host, share the <strong>📋 Copy invite link</strong> button so friends can join with one click.</p>
 
       <h3>4. Add bots (optional)</h3>
-      <p>If there are fewer than 4 players, the host will be asked whether to fill the remaining seats with bot players. Bots play automatically.</p>
+      <p>If there are fewer than 4 players, the host will be asked whether to fill seats with bot players. Bots play automatically but wait 15 seconds per turn so you have time to react and match cards.</p>
 
       <h3>5. Start playing</h3>
-      <p>The host clicks <strong>Start Game</strong>. Cards are dealt and play begins with the host.</p>
+      <p>Cards are dealt and play begins clockwise from the host. Your cards appear at the bottom — tap one to play it.</p>
 
       <h3>Reconnecting</h3>
-      <p>If you lose your connection mid-game, rejoin with the same name and room code within <strong>90 seconds</strong> to get your hand back.</p>
+      <p>If you lose connection mid-game, reopen the same invite link (or the same URL) with <strong>your exact same name</strong> within <strong>90 seconds</strong> to reclaim your hand.</p>
 
       <h3>Spectating</h3>
       <p>Join a room that is already in progress to watch as a spectator. You can see the board but cannot play cards.</p>
+
+      <h3>Voice Chat Setup</h3>
+      <p>Click the <strong>🎙️ Voice</strong> button during a game to talk with other players. Your browser will ask for microphone permission — click <strong>Allow</strong>.</p>
+      <p>If the mic is blocked, fix it by browser:</p>
+      <ul>
+        <li><strong>Chrome / Edge</strong>: Click the 🔒 icon in the address bar → Microphone → Allow → reload the page.</li>
+        <li><strong>Firefox</strong>: Click 🔒 → Permissions → Microphone → Allow.</li>
+        <li><strong>Safari</strong>: Safari menu → Settings for This Website → Microphone → Allow.</li>
+      </ul>
+      <p>If it's still blocked, check your OS:</p>
+      <ul>
+        <li><strong>Windows</strong>: Settings → Privacy &amp; Security → Microphone → turn on for your browser.</li>
+        <li><strong>macOS</strong>: System Settings → Privacy &amp; Security → Microphone → allow the browser.</li>
+      </ul>
     </div>
   );
 }
@@ -139,13 +155,82 @@ function Tips() {
       <p>If a player drops to 1 card and doesn't say ZAR!, challenge them immediately — before they play their last card. Once the round is over it's too late.</p>
 
       <h3>Count cards</h3>
-      <p>The sidebar shows how many cards each player holds. Focus your Wasps and Frogs on players with few cards to slow them down.</p>
+      <p>The player bar shows how many cards each player holds. Focus your Wasps and Frogs on players with few cards to slow them down.</p>
 
       <h3>Managing the draw pile</h3>
       <p>When the draw pile drops below 10 cards, the discard pile is added back to the bottom (without shuffling). Plan accordingly — the cards that were played recently will come back around.</p>
 
       <h3>Declare wisely</h3>
       <p>After playing a Dragon or Peacock, pick a symbol or color you hold in your hand. That way you'll be able to play next turn even if someone else matches first.</p>
+    </div>
+  );
+}
+
+function Issues() {
+  return (
+    <div className="help-section">
+      <h2>Troubleshooting</h2>
+      <p className="help-note">Top 20 issues players run into — and how to fix them.</p>
+
+      <h3>1. Microphone is blocked by the browser</h3>
+      <p>Click the <strong>🔒 lock icon</strong> in the address bar → set Microphone to <strong>Allow</strong> → reload the page. On Firefox: 🔒 → Permissions → Microphone → Allow. On Safari: Safari menu → Settings for This Website → Microphone → Allow.</p>
+
+      <h3>2. No microphone detected</h3>
+      <p>No mic hardware was found on this device. Plug in a headset or check your OS sound settings. On Windows: Settings → Sound → Input. On macOS: System Settings → Sound → Input.</p>
+
+      <h3>3. Mic is in use by another app</h3>
+      <p>Another program (Zoom, Teams, Discord, etc.) is holding the microphone. Close it, then click <strong>🎙️ Voice</strong> again.</p>
+
+      <h3>4. Can't hear other players in voice chat</h3>
+      <p>Check your speaker/headphone volume. Try clicking <strong>✕</strong> to leave the voice channel and then rejoining with <strong>🎙️ Voice</strong>. Both players must be in the same voice channel — the button shows the count when connected.</p>
+
+      <h3>5. Page is blank or won't load</h3>
+      <p>Do a hard refresh: <strong>Ctrl + Shift + R</strong> on Windows/Linux, <strong>Cmd + Shift + R</strong> on Mac. If it still fails, try a different browser or clear the cache.</p>
+
+      <h3>6. Disconnected mid-game</h3>
+      <p>Reopen the same invite link (or game URL) and enter your <strong>exact same name</strong>. You have <strong>90 seconds</strong> to reconnect and reclaim your hand. After that your seat is removed.</p>
+
+      <h3>7. Invite link doesn't work ("Room not found")</h3>
+      <p>The room ended or the host closed their tab. Ask the host to create a new room and share a fresh invite link.</p>
+
+      <h3>8. "Room is full"</h3>
+      <p>Rooms hold up to 9 players. Wait for a spot to open, or ask the host to start a second room.</p>
+
+      <h3>9. No game shows up to join</h3>
+      <p>No host has created a room yet. Click <strong>Continue</strong> on the home screen, then <strong>Yes, I'll host</strong>. Share your invite link with the group so others can join.</p>
+
+      <h3>10. "Name already taken in this room"</h3>
+      <p>Another player in the room is using that name. Choose a different name and try again.</p>
+
+      <h3>11. Joined as a spectator instead of a player</h3>
+      <p>You arrived after the game started. Spectators can watch but not play. Ask the host to start a new round — or join a fresh game next time before the host clicks Start.</p>
+
+      <h3>12. It's not my turn and I can't play</h3>
+      <p>Wait for the <strong>"Your turn!"</strong> banner. You can still play an out-of-turn match if the top discard card exactly matches a card in your hand (same color + same symbol or command).</p>
+
+      <h3>13. My card won't play — it's highlighted but rejected</h3>
+      <p>The card must match the top discard by <strong>color</strong>, <strong>symbol</strong>, or <strong>command type</strong>. If the 🐝 wasp banner is showing, <strong>only another Wasp</strong> can be played until the penalty is drawn.</p>
+
+      <h3>14. There's a Wasp penalty and I'm stuck</h3>
+      <p>Tap <strong>Draw</strong> to take the penalty cards. After drawing you can still play a card from your hand or pass — the Wasp draw does not end your turn.</p>
+
+      <h3>15. Can't go out — won't let me play my last double</h3>
+      <p>You cannot win the round on a double play. With exactly 2 cards you must play them one at a time. Play the first card to go out with 1 card, say ZAR!, then play the last card next turn.</p>
+
+      <h3>16. Forgot to say ZAR! and got challenged</h3>
+      <p>The instant you play down to 1 card, tap <strong>Say ZAR!</strong> before anyone else acts. Opponents can challenge you at any moment until you do, forcing you to draw 1 penalty card.</p>
+
+      <h3>17. The match window closed before I could tap</h3>
+      <p>The out-of-turn match window lasts only <strong>1.5 seconds</strong> from when a card is played. Keep your eyes on the discard pile during other players' turns and tap the moment a match appears.</p>
+
+      <h3>18. A Dragon or Peacock modal appeared and the game froze</h3>
+      <p>You played a Dragon or Peacock — the game is waiting for you to <strong>choose a symbol or color</strong>. Select one from the popup and play will continue immediately.</p>
+
+      <h3>19. Bot turns are very slow</h3>
+      <p>Bots intentionally wait <strong>15 seconds</strong> before playing. This gives human players time to play out-of-turn matches. It's by design, not a bug.</p>
+
+      <h3>20. The draw pile ran out of cards</h3>
+      <p>When the draw pile drops below 10 cards, the discard pile (minus the current top card) is automatically added back to the bottom. The game will never truly run out of cards.</p>
     </div>
   );
 }
