@@ -165,6 +165,10 @@ export default function VoiceChat({ myId }: VoiceChatProps) {
   }, [leaveVoice]);
 
   async function joinVoice() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('Voice requires HTTPS — the site must be served securely.');
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       localStreamRef.current = stream;
@@ -172,8 +176,15 @@ export default function VoiceChat({ myId }: VoiceChatProps) {
       setInVoice(true);
       setVoiceUserIds([myId]);
       setError('');
-    } catch {
-      setError('Mic denied.');
+    } catch (err) {
+      const name = (err as { name?: string }).name ?? '';
+      if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setError('No microphone detected on this device.');
+      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+        setError('Mic is in use by another app — close it and retry.');
+      } else {
+        setError('Mic blocked — click the 🔒 in your browser address bar and allow microphone.');
+      }
     }
   }
 
