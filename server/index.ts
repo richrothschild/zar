@@ -165,12 +165,7 @@ function executeBotTurn(roomId: string) {
         return;
       }
 
-      if (room.state.waitingForDeclaration) {
-        broadcastState(roomId);
-        setTimeout(() => executeBotTurn(roomId), 400);
-        return;
-      }
-
+      // Always open match window — even for Dragon/Peacock — so humans can counter-match
       openMatchWindow(roomId);
       return;
     }
@@ -179,12 +174,6 @@ function executeBotTurn(roomId: string) {
       const [s3, card2] = removeFromHand(s2, bot.id, action.cardId2);
       if (!card1 || !card2) break;
       room.state = applyDouble(s3, bot.id, card1, card2);
-
-      if (room.state.waitingForDeclaration) {
-        broadcastState(roomId);
-        setTimeout(() => executeBotTurn(roomId), 400);
-        return;
-      }
 
       openMatchWindow(roomId);
       return;
@@ -424,11 +413,7 @@ io.on('connection', (socket: Socket) => {
       return;
     }
 
-    if (!room.state.waitingForDeclaration) {
-      openMatchWindow(currentRoomId!);
-    } else {
-      broadcastState(currentRoomId!);
-    }
+    openMatchWindow(currentRoomId!);
   });
 
   // ── play_double ──
@@ -457,11 +442,7 @@ io.on('connection', (socket: Socket) => {
 
     room.state = applyDouble(s3, socket.id, card1, card2);
 
-    if (!room.state.waitingForDeclaration) {
-      openMatchWindow(currentRoomId!);
-    } else {
-      broadcastState(currentRoomId!);
-    }
+    openMatchWindow(currentRoomId!);
   });
 
   // ── declare_symbol (after dragon) ──
@@ -542,7 +523,6 @@ io.on('connection', (socket: Socket) => {
     const s = room.state;
 
     if (s.phase !== 'playing') return;
-    if (s.waitingForDeclaration) return;
     if (s.players[s.currentPlayerIndex].id === socket.id) { emitError("It's your turn — play normally."); return; }
 
     const top = s.playPile[s.playPile.length - 1];
@@ -573,6 +553,22 @@ io.on('connection', (socket: Socket) => {
       } else {
         broadcastState(currentRoomId!);
       }
+      return;
+    }
+
+    // Power card match: matcher takes the declaration; original player draws 1 penalty
+    if (card.kind === 'power') {
+      let newState = drawCards(s2, matchedPlayer.id, 1);
+      newState = {
+        ...newState,
+        playPile: [...newState.playPile, card],
+        currentPlayerIndex: matcherIndex,
+        matchWindowOpen: false,
+        waitingForDeclaration: true, // matcher now declares
+      };
+      room.state = checkRoundOver(newState);
+      broadcastState(currentRoomId!);
+      scheduleBotTurnIfNeeded(currentRoomId!);
       return;
     }
 
