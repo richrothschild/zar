@@ -227,7 +227,7 @@ function Issues() {
       <p>You played a Dragon or Peacock — the game is waiting for you to <strong>choose a symbol or color</strong>. Select one from the popup and play will continue immediately.</p>
 
       <h3>19. Bot turns are very slow</h3>
-      <p>Bots intentionally wait <strong>15 seconds</strong> before playing. This gives human players time to play out-of-turn matches. It's by design, not a bug.</p>
+      <p>Bots intentionally wait <strong>10 seconds</strong> before playing. This gives human players time to play out-of-turn matches. It's by design, not a bug.</p>
 
       <h3>20. The draw pile ran out of cards</h3>
       <p>When the draw pile drops below 10 cards, the discard pile (minus the current top card) is automatically added back to the bottom. The game will never truly run out of cards.</p>

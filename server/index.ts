@@ -32,6 +32,10 @@ const rooms = new Map<string, Room>();
 // ── Voice chat participants ─────────────────────────────────────────────────────
 const voiceRooms = new Map<string, Set<string>>(); // roomId → Set<socketId>
 
+// ── Stall detection ─────────────────────────────────────────────────────────────
+const lastMoveAt = new Map<string, number>();
+const roomWatchdogs = new Map<string, ReturnType<typeof setInterval>>();
+
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SYMBOLS: CardSymbol[] = ['galaxy', 'moon', 'cloud', 'sun', 'star', 'lightning'];
 const COLORS: CardColor[] = ['yellow', 'blue', 'red'];
@@ -97,12 +101,40 @@ function openMatchWindow(roomId: string) {
   broadcastState(roomId);
 }
 
+// Record the last moment any game action occurred in a room.
+function touchRoom(roomId: string) {
+  lastMoveAt.set(roomId, Date.now());
+}
+
+// Watchdog: fires every 7 s; if a bot's turn has been stalled for >14 s, re-kick it.
+function startWatchdog(roomId: string) {
+  stopWatchdog(roomId);
+  const id = setInterval(() => {
+    const room = rooms.get(roomId);
+    if (!room || room.state.phase !== 'playing') { stopWatchdog(roomId); return; }
+    const since = Date.now() - (lastMoveAt.get(roomId) ?? 0);
+    if (since > 14_000) {
+      const cur = room.state.players[room.state.currentPlayerIndex];
+      if (cur?.isBot) {
+        console.log(`[watchdog] Rescuing stuck bot turn in room ${roomId} (stalled ${since}ms)`);
+        executeBotTurn(roomId);
+      }
+    }
+  }, 7_000);
+  roomWatchdogs.set(roomId, id);
+}
+
+function stopWatchdog(roomId: string) {
+  const id = roomWatchdogs.get(roomId);
+  if (id !== undefined) { clearInterval(id); roomWatchdogs.delete(roomId); }
+}
+
 // ── Bot helpers ────────────────────────────────────────────────────────────────
 function scheduleBotTurnIfNeeded(roomId: string) {
   const room = rooms.get(roomId);
   if (!room || room.state.phase !== 'playing') return;
   const cur = room.state.players[room.state.currentPlayerIndex];
-  if (cur?.isBot) setTimeout(() => executeBotTurn(roomId), 15000);
+  if (cur?.isBot) setTimeout(() => executeBotTurn(roomId), 10_000);
 }
 
 function executeBotTurn(roomId: string) {
@@ -112,6 +144,8 @@ function executeBotTurn(roomId: string) {
 
   const bot = room.state.players[room.state.currentPlayerIndex];
   if (!bot?.isBot) return;
+
+  touchRoom(roomId); // mark activity so watchdog won't double-fire
 
   const action = computeBotAction(room.state, bot.id);
 
@@ -171,7 +205,7 @@ function executeBotTurn(roomId: string) {
         room.state = { ...room.state, pendingDrawCount: 0, drawnThisTurn: true };
         broadcastState(roomId);
         // Re-run bot logic so it can play a drawn card or pass
-        setTimeout(() => executeBotTurn(roomId), 1500);
+        setTimeout(() => executeBotTurn(roomId), 1_000);
       } else {
         // Voluntary draw — then try to play the drawn card
         room.state = drawCards(room.state, bot.id, 1);
@@ -336,6 +370,8 @@ io.on('connection', (socket: Socket) => {
 
     room.state = startRound(room.state);
     broadcastState(currentRoomId!);
+    touchRoom(currentRoomId!);
+    startWatchdog(currentRoomId!);
     scheduleBotTurnIfNeeded(currentRoomId!);
   });
 
@@ -369,6 +405,8 @@ io.on('connection', (socket: Socket) => {
     if (room.state.players.length < 2) { emitError('Need at least 2 players.'); return; }
     room.state = startRound(room.state);
     broadcastState(currentRoomId!);
+    touchRoom(currentRoomId!);
+    startWatchdog(currentRoomId!);
     scheduleBotTurnIfNeeded(currentRoomId!);
   });
 
@@ -390,6 +428,7 @@ io.on('connection', (socket: Socket) => {
     const [newState, card] = removeFromHand(s, socket.id, cardId);
     if (!card) return;
     room.state = applyPlay(newState, socket.id, card);
+    touchRoom(currentRoomId!);
 
     // Check if player just played last card
     const updatedPlayer = room.state.players.find(p => p.id === socket.id);
@@ -427,6 +466,7 @@ io.on('connection', (socket: Socket) => {
     if (!card1 || !card2) return;
 
     room.state = applyDouble(s3, socket.id, card1, card2);
+    touchRoom(currentRoomId!);
 
     openMatchWindow(currentRoomId!);
   });
@@ -440,6 +480,7 @@ io.on('connection', (socket: Socket) => {
     const top = room.state.playPile[room.state.playPile.length - 1];
     if (!top || top.power !== 'dragon') return;
     room.state = applyDragonDeclaration(room.state, symbol);
+    touchRoom(currentRoomId!);
     openMatchWindow(currentRoomId!);
   });
 
@@ -452,6 +493,7 @@ io.on('connection', (socket: Socket) => {
     const top = room.state.playPile[room.state.playPile.length - 1];
     if (!top || top.power !== 'peacock') return;
     room.state = applyPeacockDeclaration(room.state, color);
+    touchRoom(currentRoomId!);
     openMatchWindow(currentRoomId!);
   });
 
@@ -471,6 +513,7 @@ io.on('connection', (socket: Socket) => {
       s = drawCards(s, socket.id, s.pendingDrawCount);
       s = { ...s, pendingDrawCount: 0, drawnThisTurn: true };
       room.state = s;
+      touchRoom(currentRoomId!);
       broadcastState(currentRoomId!);
     } else {
       // Voluntary draw: only allowed once per turn
@@ -478,6 +521,7 @@ io.on('connection', (socket: Socket) => {
       s = drawCards(s, socket.id, 1);
       s = { ...s, drawnThisTurn: true };
       room.state = s;
+      touchRoom(currentRoomId!);
       broadcastState(currentRoomId!);
       // Player can still play or pass; turn does NOT auto-advance
     }
@@ -497,6 +541,7 @@ io.on('connection', (socket: Socket) => {
 
     s = advanceTurnSkippingInactive(s);
     room.state = s;
+    touchRoom(currentRoomId!);
     broadcastState(currentRoomId!);
     scheduleBotTurnIfNeeded(currentRoomId!);
   });
@@ -523,6 +568,8 @@ io.on('connection', (socket: Socket) => {
     if (!card) return;
 
     const matcherIndex = s2.players.findIndex(p => p.id === socket.id);
+
+    touchRoom(currentRoomId!);
 
     if (card.kind === 'command' && card.command === 'wasp') {
       // Wasp match: stack the draw count, no penalty for the player who played the wasp.
@@ -605,6 +652,8 @@ io.on('connection', (socket: Socket) => {
     if (room.state.phase !== 'round_over') return;
     room.state = startRound(room.state);
     broadcastState(currentRoomId!);
+    touchRoom(currentRoomId!);
+    startWatchdog(currentRoomId!);
     scheduleBotTurnIfNeeded(currentRoomId!);
   });
 
