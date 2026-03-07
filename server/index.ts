@@ -20,7 +20,10 @@ if (process.env.SENTRY_DSN) {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? (process.env.NODE_ENV === 'production' ? false : '*');
+const ALLOWED_ORIGIN_RAW = process.env.ALLOWED_ORIGIN ?? (process.env.NODE_ENV === 'production' ? false : '*');
+const ALLOWED_ORIGIN = typeof ALLOWED_ORIGIN_RAW === 'string' && ALLOWED_ORIGIN_RAW.includes(',')
+  ? ALLOWED_ORIGIN_RAW.split(',').map(s => s.trim())
+  : ALLOWED_ORIGIN_RAW;
 
 const redis = process.env.REDIS_URL ? new Redis(process.env.REDIS_URL) : null;
 if (redis) {
@@ -33,7 +36,7 @@ if (redis) {
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: { origin: ALLOWED_ORIGIN as string | false, methods: ['GET', 'POST'] },
+  cors: { origin: ALLOWED_ORIGIN as string | string[] | false, methods: ['GET', 'POST'] },
 });
 
 // Health check (before static, so it always responds)
