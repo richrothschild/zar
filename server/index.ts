@@ -170,7 +170,7 @@ async function loadRoomsFromRedis(): Promise<void> {
 const SYMBOLS: CardSymbol[] = ['galaxy', 'moon', 'cloud', 'sun', 'star', 'lightning'];
 const COLORS: CardColor[] = ['yellow', 'blue', 'red'];
 const RECONNECT_MS = 90_000;
-const BOT_NAMES = ['Zephyr', 'Cinder', 'Orion', 'Nova', 'Rex', 'Lyra', 'Blaze', 'Echo', 'Vega', 'Dune'];
+const BOT_NAMES = ['Keemo', 'Janice'];
 
 function randItem<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -283,7 +283,7 @@ function scheduleBotTurnIfNeeded(roomId: string) {
     setTimeout(() => {
       pendingBotTimers.delete(roomId);
       executeBotTurn(roomId);
-    }, 10_000);
+    }, 5_000);
   }
 }
 
