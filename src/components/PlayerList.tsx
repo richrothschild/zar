@@ -4,10 +4,12 @@ import { socket } from '../socket';
 interface PlayerListProps {
   state: ClientGameState;
   myId: string;
+  hostId?: string;
 }
 
-export default function PlayerList({ state, myId }: PlayerListProps) {
+export default function PlayerList({ state, myId, hostId }: PlayerListProps) {
   const currentPlayer = state.players[state.currentPlayerIndex];
+  const isHost = myId === hostId;
 
   return (
     <div className="player-list">
@@ -18,6 +20,7 @@ export default function PlayerList({ state, myId }: PlayerListProps) {
           isMe={p.id === myId}
           isCurrent={p.id === currentPlayer?.id}
           state={state}
+          canKick={isHost && p.id !== myId && !p.isBot}
         />
       ))}
       {state.spectators.length > 0 && (
@@ -34,11 +37,12 @@ export default function PlayerList({ state, myId }: PlayerListProps) {
   );
 }
 
-function PlayerRow({ player, isMe, isCurrent, state }: {
+function PlayerRow({ player, isMe, isCurrent, state, canKick }: {
   player: ClientPlayer;
   isMe: boolean;
   isCurrent: boolean;
   state: ClientGameState;
+  canKick: boolean;
 }) {
   const canChallenge = !isMe &&
     player.handCount === 1 &&
@@ -65,6 +69,15 @@ function PlayerRow({ player, isMe, isCurrent, state }: {
           title="Challenge — they didn't say 'last card'!"
         >
           Challenge!
+        </button>
+      )}
+      {canKick && (
+        <button
+          className="player-row__kick"
+          onClick={() => socket.emit('kick_player', { playerId: player.id })}
+          title={`Kick ${player.name}`}
+        >
+          Kick
         </button>
       )}
     </div>

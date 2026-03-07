@@ -89,11 +89,17 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
           <div className="lobby__invite">
             <button
               className="btn btn--secondary lobby__invite-btn"
-              onClick={() => navigator.clipboard.writeText(inviteLink(roomInfo.roomId))}
+              onClick={async () => {
+                const link = inviteLink(roomInfo.roomId);
+                if (navigator.share) {
+                  try { await navigator.share({ title: 'Play ZAR!', text: 'Join my ZAR game', url: link }); return; } catch { /* fall through */ }
+                }
+                navigator.clipboard.writeText(link);
+              }}
             >
-              📋 Copy invite link
+              📋 Invite friends
             </button>
-            <p className="lobby__hint">Share this link — friends click it and join instantly.</p>
+            <p className="lobby__hint">Share the link — friends click it and join instantly.</p>
           </div>
         )}
 
@@ -106,6 +112,14 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
               {p.id === myId ? ' (you)' : ''}
               {!p.connected ? ' (disconnected)' : ''}
               {p.isBot ? ' 🤖' : ''}
+              {isHost && p.id !== myId && !p.isBot && (
+                <button
+                  className="btn btn--ghost lobby__kick-btn"
+                  onClick={() => socket.emit('kick_player', { playerId: p.id })}
+                >
+                  Kick
+                </button>
+              )}
             </div>
           ))}
           {roomInfo.spectators?.length > 0 && (
@@ -302,6 +316,11 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
         <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('rules')}>Rules</button>
         <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('tips')}>Tips</button>
         <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('issues')}>Troubleshoot</button>
+      </div>
+      <div className="lobby__legal">
+        <a href="/terms.html" target="_blank" rel="noopener">Terms</a>
+        <span> · </span>
+        <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a>
       </div>
     </div>
   );

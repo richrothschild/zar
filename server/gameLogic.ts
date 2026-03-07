@@ -1,4 +1,4 @@
-import { Card, CardColor, CardSymbol, CommandKind, GameState } from './types.js';
+import type { Card, CardColor, CardSymbol, CommandKind, GameState } from './types.js';
 import { buildDeck, calcHandScore, shuffle } from './deck.js';
 
 // ── Playability ────────────────────────────────────────────────────────────────
@@ -232,7 +232,7 @@ export function advanceTurnSkippingInactive(state: GameState, steps = 1): GameSt
 }
 
 /** Apply a single card play (not double, not match). Returns new state. */
-export function applyPlay(state: GameState, playerId: string, card: Card): GameState {
+export function applyPlay(state: GameState, _playerId: string, card: Card): GameState {
   let s = placeCard(state, card);
 
   if (card.kind === 'basic') {
@@ -264,7 +264,7 @@ export function applyPlay(state: GameState, playerId: string, card: Card): GameS
 }
 
 /** Apply a double play (matching pair played as one). */
-export function applyDouble(state: GameState, playerId: string, card1: Card, card2: Card): GameState {
+export function applyDouble(state: GameState, _playerId: string, card1: Card, card2: Card): GameState {
   // Place both; only card2 is the "active" top
   let s = placeCard(state, card1);
   s = placeCard(s, card2);
@@ -335,7 +335,7 @@ export function checkRoundOver(state: GameState): GameState {
 
 // ── View Builder ───────────────────────────────────────────────────────────────
 
-import { ClientGameState, ClientPlayer } from './types.js';
+import type { ClientGameState, ClientPlayer } from './types.js';
 
 export function buildClientState(state: GameState, requestingPlayerId: string): ClientGameState {
   const showAllHands = state.phase === 'round_over' || state.phase === 'game_over';

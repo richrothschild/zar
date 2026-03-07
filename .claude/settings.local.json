@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit:*)",
+      "Bash(npm run build:*)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(npm test)",
+      "Bash(python3 -c \":*)",
+      "Bash(npm install ioredis @sentry/node @sentry/react)"
+    ]
+  }
+}

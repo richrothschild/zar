@@ -8,6 +8,7 @@ import DragonModal from './DragonModal';
 import PeacockModal from './PeacockModal';
 import VoiceChat from './VoiceChat';
 import HelpModal from './HelpModal';
+import { soundEnabled, setSoundEnabled, playCardPlay } from '../sound';
 
 interface GameBoardProps {
   state: ClientGameState;
@@ -18,6 +19,14 @@ interface GameBoardProps {
 
 export default function GameBoard({ state, myId, hostId, isSpectator }: GameBoardProps) {
   const [showHelp, setShowHelp] = useState(false);
+  const [sounds, setSounds] = useState(soundEnabled);
+
+  function toggleSound() {
+    const next = !sounds;
+    setSounds(next);
+    setSoundEnabled(next);
+    if (next) playCardPlay(); // audible confirmation that sound is on
+  }
   const me = state.players.find(p => p.id === myId);
   const isMyTurn = !isSpectator && state.players[state.currentPlayerIndex]?.id === myId;
   const isHost = myId === hostId;
@@ -85,7 +94,7 @@ export default function GameBoard({ state, myId, hostId, isSpectator }: GameBoar
 
       {/* ── Player chips bar ── */}
       <div className="board__player-bar">
-        <PlayerList state={state} myId={myId} />
+        <PlayerList state={state} myId={myId} hostId={hostId} />
       </div>
 
       {/* ── Match window banner — time-critical, very prominent ── */}
@@ -168,11 +177,14 @@ export default function GameBoard({ state, myId, hostId, isSpectator }: GameBoar
         />
       )}
 
-      {/* ── Secondary bar: voice + help ── */}
+      {/* ── Secondary bar: voice + help + sound ── */}
       <div className="board__secondary-bar">
         <VoiceChat myId={myId} />
         <button className="btn btn--ghost board__rules-btn" onClick={() => setShowHelp(true)}>
           Rules &amp; Tips
+        </button>
+        <button className="btn btn--ghost" onClick={toggleSound} title={sounds ? 'Mute sounds' : 'Enable sounds'}>
+          {sounds ? '🔊' : '🔇'}
         </button>
       </div>
 
@@ -231,7 +243,12 @@ function ScoreScreen({ state, myId, isHost }: { state: ClientGameState; myId: st
       {!gameOver && !isHost && (
         <p>Waiting for host to start the next round…</p>
       )}
-      {gameOver && (
+      {gameOver && isHost && (
+        <button className="btn btn--primary" onClick={() => socket.emit('rematch')}>
+          Play Again
+        </button>
+      )}
+      {gameOver && !isHost && (
         <p className="score-screen__final">Thanks for playing ZAR!</p>
       )}
     </div>

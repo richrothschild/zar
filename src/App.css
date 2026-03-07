@@ -154,7 +154,11 @@
 }
 .lobby__hint { color: #aaa; font-size: 0.9rem; }
 .lobby__players { margin: 1.5rem 0; text-align: left; }
-.lobby__player { padding: 0.4rem 0; font-size: 1rem; }
+.lobby__player { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; font-size: 1rem; }
+.lobby__kick-btn { font-size: 0.65rem; padding: 2px 7px; background: #e94560; border: none; border-radius: 10px; color: #fff; cursor: pointer; margin-left: auto; }
+.lobby__legal { margin-top: 1.5rem; font-size: 0.75rem; color: #666; }
+.lobby__legal a { color: #4db8ff; text-decoration: none; }
+.lobby__legal a:hover { text-decoration: underline; }
 .lobby__start { display: flex; flex-direction: column; align-items: center; gap: 1rem; margin-top: 1.5rem; }
 .lobby__waiting { color: #aaa; font-style: italic; margin-top: 1.5rem; }
 .lobby__invite { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; margin: 0.75rem 0; }
@@ -495,6 +499,7 @@
 .board__spectator-label { font-style: italic; color: #888; }
 .player-row__stats { display: flex; gap: 0.35rem; font-size: 0.72rem; color: #aaa; }
 .player-row__challenge { font-size: 0.65rem; padding: 2px 6px; background: #e94560; border: none; border-radius: 10px; color: #fff; cursor: pointer; min-height: 24px; }
+.player-row__kick { font-size: 0.65rem; padding: 2px 6px; background: #555; border: none; border-radius: 10px; color: #fff; cursor: pointer; min-height: 24px; margin-left: 0.25rem; }
 
 /* ── Modals ────────────────────────────────────────────────── */
 .modal-overlay {

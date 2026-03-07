@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { socket } from './socket';
 import type { ClientGameState, RoomInfo } from './types';
 import Lobby from './components/Lobby';
 import GameBoard from './components/GameBoard';
+import { playYourTurn, playZar, playChallenge, playRoundWin, playKicked } from './sound';
 import './App.css';
 
 interface SuggestBotsPayload { currentCount: number; botsNeeded: number; }
@@ -37,6 +38,9 @@ export default function App() {
   const [notification, setNotification] = useState('');
   const [isSpectator, setIsSpectator] = useState(false);
   const [suggestBots, setSuggestBots] = useState<SuggestBotsPayload | null>(null);
+  const prevTurnPlayerId = useRef<string | null>(null);
+  const myIdRef = useRef('');
+  myIdRef.current = myId;
 
   useEffect(() => {
     socket.on('connect', () => setMyId(socket.id ?? ''));
@@ -47,6 +51,19 @@ export default function App() {
     });
 
     socket.on('game_state', (state: ClientGameState) => {
+      // Detect when it becomes my turn and play a sound
+      const currentPlayerId = state.players[state.currentPlayerIndex]?.id ?? null;
+      if (
+        state.phase === 'playing' &&
+        currentPlayerId === myIdRef.current &&
+        prevTurnPlayerId.current !== myIdRef.current
+      ) {
+        playYourTurn();
+      }
+      if (state.phase === 'round_over' || state.phase === 'game_over') {
+        playRoundWin();
+      }
+      prevTurnPlayerId.current = currentPlayerId;
       setGameState(state);
       setIsSpectator(state.isSpectator);
     });
@@ -60,11 +77,25 @@ export default function App() {
     });
 
     socket.on('last_card_announced', ({ playerName }: { playerName: string }) => {
+      playZar();
       showNotification(`📢 ${playerName} says ZAR!`);
     });
 
     socket.on('last_card_challenge', ({ challengerName, targetName }: { challengerName: string; targetName: string }) => {
+      playChallenge();
       showNotification(`🚨 ${challengerName} challenged ${targetName}! Draw 1 card.`);
+    });
+
+    socket.on('kicked', ({ message }: { message: string }) => {
+      playKicked();
+      showNotification(`🚫 ${message}`);
+      setGameState(null);
+      setRoomInfo(null);
+      socket.disconnect();
+    });
+
+    socket.on('server_restart', ({ message }: { message: string }) => {
+      showNotification(`🔄 ${message}`);
     });
 
     return () => { socket.removeAllListeners(); };

@@ -24,6 +24,7 @@ export interface Player {
   announcedLastCard: boolean;
   isBot?: boolean;
   reconnectTimer?: ReturnType<typeof setTimeout>; // server-internal, never sent to client
+  disconnectedAt?: number; // timestamp when player disconnected, used to restore timer after restart
 }
 
 export interface Spectator {

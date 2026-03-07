@@ -4,6 +4,7 @@ import { socket } from '../socket';
 import CardComponent from './Card';
 import DragonModal from './DragonModal';
 import PeacockModal from './PeacockModal';
+import { playCardPlay, playMatch } from '../sound';
 
 function canPlayCard(card: CardType, state: ClientGameState): boolean {
   const top = state.topCard;
@@ -71,6 +72,7 @@ export default function Hand({ hand, state, isMyTurn }: HandProps) {
     // Out-of-turn exact match — always allowed
     if (!isMyTurn) {
       if (isMatchCard(card, state.topCard)) {
+        playMatch();
         socket.emit('match_card', { cardId: card.id });
         setSelectedId(null);
       }
@@ -110,6 +112,7 @@ export default function Hand({ hand, state, isMyTurn }: HandProps) {
   }
 
   function playCard(card: CardType) {
+    playCardPlay();
     if (card.kind === 'power' && card.power === 'dragon') {
       setPendingCard(card);
       setShowDragon(true);

@@ -1,4 +1,4 @@
-import { Card, CardColor, CardSymbol, CommandKind, PowerKind } from './types.js';
+import type { Card, CardColor, CardSymbol, CommandKind, PowerKind } from './types.js';
 
 const COLORS: CardColor[] = ['yellow', 'blue', 'red'];
 const SYMBOLS: CardSymbol[] = ['galaxy', 'moon', 'cloud', 'sun', 'star', 'lightning'];

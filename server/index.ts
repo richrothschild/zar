@@ -3,6 +3,8 @@ import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { Redis } from 'ioredis';
+import * as Sentry from '@sentry/node';
 import type { Room, GameState, CardSymbol, CardColor } from './types.js';
 import {
   startRound, drawCards, removeFromHand, applyPlay, applyDouble,
@@ -12,13 +14,31 @@ import {
 } from './gameLogic.js';
 import { computeBotAction } from './botLogic.js';
 
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN, environment: process.env.NODE_ENV ?? 'production' });
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? (process.env.NODE_ENV === 'production' ? false : '*');
+
+const redis = process.env.REDIS_URL ? new Redis(process.env.REDIS_URL) : null;
+if (redis) {
+  redis.on('error', (err: Error) => console.error('[redis] connection error:', err));
+  console.log('[redis] connected');
+} else {
+  console.log('[redis] no REDIS_URL — using in-memory store only');
+}
 
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
+  cors: { origin: ALLOWED_ORIGIN as string | false, methods: ['GET', 'POST'] },
+});
+
+// Health check (before static, so it always responds)
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', rooms: rooms.size, uptime: Math.floor(process.uptime()) });
 });
 
 // Serve built frontend in production
@@ -48,6 +68,7 @@ function scheduleRoomCleanup(roomId: string) {
     lastMoveAt.delete(roomId);
     roomCleanupTimers.delete(roomId);
     stopWatchdog(roomId);
+    if (redis) void redis.del(`room:${roomId}`);
     console.log(`[cleanup] Room ${roomId} deleted`);
   }, ROOM_CLEANUP_MS);
   roomCleanupTimers.set(roomId, id);
@@ -58,10 +79,95 @@ function cancelRoomCleanup(roomId: string) {
   if (id !== undefined) { clearTimeout(id); roomCleanupTimers.delete(roomId); }
 }
 
+// ── Redis persistence ───────────────────────────────────────────────────────────
+function roomToJSON(room: Room): string {
+  return JSON.stringify(room, (key, value: unknown) => {
+    if (key === 'reconnectTimer') return undefined; // non-serialisable handle
+    return value;
+  });
+}
+
+async function persistRoom(roomId: string): Promise<void> {
+  if (!redis) return;
+  const room = rooms.get(roomId);
+  if (!room) { await redis.del(`room:${roomId}`); return; }
+  await redis.set(`room:${roomId}`, roomToJSON(room), 'EX', 86400); // 24 h TTL
+}
+
+// ── Reconnect timer (extracted so Redis restore can reuse it) ───────────────────
+function startReconnectTimer(roomId: string, playerId: string, delayMs: number) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  const player = room.state.players.find(p => p.id === playerId);
+  if (!player) return;
+  const timer = setTimeout(() => {
+    const r = rooms.get(roomId);
+    if (!r) return;
+    const removedIdx = r.state.players.findIndex(p => p.id === playerId);
+    if (removedIdx === -1) return; // already reconnected or removed
+    const newPlayers = r.state.players.filter(p => p.id !== playerId);
+    let newCurrentIdx = r.state.currentPlayerIndex;
+    if (removedIdx < newCurrentIdx) newCurrentIdx -= 1;
+    else if (removedIdx === newCurrentIdx) newCurrentIdx = newCurrentIdx % Math.max(1, newPlayers.length);
+    r.state = { ...r.state, players: newPlayers, currentPlayerIndex: newCurrentIdx };
+    if (r.hostId === playerId) {
+      const newHost = newPlayers.find(p => !p.isBot && p.connected)
+        ?? newPlayers.find(p => !p.isBot)
+        ?? newPlayers[0];
+      if (newHost) r.hostId = newHost.id;
+    }
+    const activePlayers = newPlayers.filter(p => p.connected || p.isBot);
+    if (activePlayers.length < 2 && r.state.phase === 'playing') {
+      r.state = { ...r.state, phase: 'game_over' };
+    }
+    broadcastRoomInfo(roomId);
+    broadcastState(roomId);
+    scheduleBotTurnIfNeeded(roomId);
+  }, delayMs);
+  player.reconnectTimer = timer;
+}
+
+async function loadRoomsFromRedis(): Promise<void> {
+  if (!redis) return;
+  const keys = await redis.keys('room:*');
+  console.log(`[redis] restoring ${keys.length} room(s)…`);
+  for (const key of keys) {
+    const data = await redis.get(key);
+    if (!data) continue;
+    try {
+      const room = JSON.parse(data) as Room;
+      if (room.state.phase === 'lobby') continue; // lobby rooms not worth restoring
+      // Remove players whose reconnect window already expired
+      room.state = {
+        ...room.state,
+        players: room.state.players.filter(p => {
+          if (p.connected || p.isBot) return true;
+          return Date.now() - (p.disconnectedAt ?? 0) < RECONNECT_MS;
+        }),
+      };
+      rooms.set(room.id, room);
+      // Re-arm reconnect timers for still-valid disconnected players
+      for (const p of room.state.players) {
+        if (!p.connected && !p.isBot) {
+          const elapsed = Date.now() - (p.disconnectedAt ?? 0);
+          startReconnectTimer(room.id, p.id, Math.max(1000, RECONNECT_MS - elapsed));
+        }
+      }
+      touchRoom(room.id);
+      startWatchdog(room.id);
+      scheduleBotTurnIfNeeded(room.id);
+      console.log(`[redis] restored room ${room.id} (phase: ${room.state.phase})`);
+    } catch (err) {
+      console.error(`[redis] failed to restore ${key}:`, err);
+    }
+  }
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SYMBOLS: CardSymbol[] = ['galaxy', 'moon', 'cloud', 'sun', 'star', 'lightning'];
 const COLORS: CardColor[] = ['yellow', 'blue', 'red'];
 const RECONNECT_MS = 90_000;
+const BOT_NAMES = ['Zephyr', 'Cinder', 'Orion', 'Nova', 'Rex', 'Lyra', 'Blaze', 'Echo', 'Vega', 'Dune'];
 
 function randItem<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -103,11 +209,13 @@ function broadcastState(roomId: string) {
   if (room.state.phase === 'game_over') {
     scheduleRoomCleanup(roomId);
   }
+  void persistRoom(roomId);
 }
 
 function broadcastRoomInfo(roomId: string) {
   const room = rooms.get(roomId);
   if (!room) return;
+  void persistRoom(roomId);
   io.to(roomId).emit('room_update', {
     roomId,
     hostId: room.hostId,
@@ -447,10 +555,11 @@ io.on('connection', (socket: Socket) => {
       const botsNeeded = 4 - room.state.players.length;
       const newBots = [];
       for (let i = 0; i < botsNeeded; i++) {
-        const botNum = room.state.players.filter(p => p.isBot).length + i + 1;
+        const botIdx = room.state.players.filter(p => p.isBot).length + i;
+        const botName = BOT_NAMES[botIdx % BOT_NAMES.length] ?? `Bot ${botIdx + 1}`;
         newBots.push({
-          id: `bot_${botNum}`,
-          name: `Bot ${botNum}`,
+          id: `bot_${botIdx + 1}`,
+          name: botName,
           hand: [],
           score: 0,
           connected: true,
@@ -719,6 +828,69 @@ io.on('connection', (socket: Socket) => {
     scheduleBotTurnIfNeeded(currentRoomId!);
   });
 
+  // ── kick_player ──
+  socket.on('kick_player', ({ playerId }: { playerId: string }) => {
+    const ctx = getRoomAndPlayer();
+    if (!ctx) return;
+    const { room } = ctx;
+    if (socket.id !== room.hostId) return;
+    if (playerId === socket.id) return; // can't kick yourself
+    const target = room.state.players.find(p => p.id === playerId);
+    if (!target || target.isBot) return;
+    clearTimeout(target.reconnectTimer);
+    io.to(playerId).emit('kicked', { message: 'You were removed from the game by the host.' });
+    io.sockets.sockets.get(playerId)?.disconnect(true);
+    if (room.state.phase === 'lobby') {
+      room.state = { ...room.state, players: room.state.players.filter(p => p.id !== playerId) };
+      broadcastRoomInfo(currentRoomId!);
+    } else {
+      const removedIdx = room.state.players.findIndex(p => p.id === playerId);
+      const newPlayers = room.state.players.filter(p => p.id !== playerId);
+      let newCurrentIdx = room.state.currentPlayerIndex;
+      if (removedIdx < newCurrentIdx) newCurrentIdx -= 1;
+      else if (removedIdx === newCurrentIdx) newCurrentIdx = newCurrentIdx % Math.max(1, newPlayers.length);
+      room.state = { ...room.state, players: newPlayers, currentPlayerIndex: newCurrentIdx };
+      const activePlayers = newPlayers.filter(p => p.connected || p.isBot);
+      if (activePlayers.length < 2 && room.state.phase === 'playing') {
+        room.state = { ...room.state, phase: 'game_over' };
+      }
+      broadcastRoomInfo(currentRoomId!);
+      broadcastState(currentRoomId!);
+      scheduleBotTurnIfNeeded(currentRoomId!);
+    }
+  });
+
+  // ── rematch ── (host resets scores and returns to lobby for a fresh game)
+  socket.on('rematch', () => {
+    const ctx = getRoomAndPlayer();
+    if (!ctx) return;
+    const { room } = ctx;
+    if (socket.id !== room.hostId) return;
+    if (room.state.phase !== 'game_over') return;
+    cancelRoomCleanup(currentRoomId!);
+    stopWatchdog(currentRoomId!);
+    room.state = {
+      ...room.state,
+      phase: 'lobby',
+      players: room.state.players.map(p => ({ ...p, score: 0, hand: [], announcedLastCard: false })),
+      drawPile: [],
+      playPile: [],
+      pendingDrawCount: 0,
+      skipsRemaining: 0,
+      waitingForDeclaration: false,
+      drawnThisTurn: false,
+      matchWindowOpen: false,
+      declaredSymbol: undefined,
+      declaredColor: undefined,
+      activeColor: undefined,
+      activeSymbol: undefined,
+      activeCommand: undefined,
+      roundWinnerId: undefined,
+    };
+    broadcastRoomInfo(currentRoomId!);
+    broadcastState(currentRoomId!);
+  });
+
   // ── voice_join ──
   socket.on('voice_join', () => {
     if (!currentRoomId) return;
@@ -823,49 +995,17 @@ io.on('connection', (socket: Socket) => {
 
     // Start 90-second reconnect grace period
     const playerId = socket.id;
-    const timer = setTimeout(() => {
-      const r = rooms.get(roomId);
-      if (!r) return;
-      const removedIdx = r.state.players.findIndex(p => p.id === playerId);
-      if (removedIdx === -1) return; // already reconnected or removed
-
-      const newPlayers = r.state.players.filter(p => p.id !== playerId);
-      let newCurrentIdx = r.state.currentPlayerIndex;
-      if (removedIdx < newCurrentIdx) {
-        newCurrentIdx -= 1;
-      } else if (removedIdx === newCurrentIdx) {
-        newCurrentIdx = newCurrentIdx % Math.max(1, newPlayers.length);
-      }
-
-      r.state = { ...r.state, players: newPlayers, currentPlayerIndex: newCurrentIdx };
-
-      // Transfer host if it was the departing player
-      if (r.hostId === playerId) {
-        const newHost = newPlayers.find(p => !p.isBot && p.connected)
-          ?? newPlayers.find(p => !p.isBot)
-          ?? newPlayers[0];
-        if (newHost) r.hostId = newHost.id;
-      }
-
-      // End game if fewer than 2 active players remain
-      const activePlayers = newPlayers.filter(p => p.connected || p.isBot);
-      if (activePlayers.length < 2 && r.state.phase === 'playing') {
-        r.state = { ...r.state, phase: 'game_over' };
-      }
-
-      broadcastRoomInfo(roomId);
-      broadcastState(roomId);
-      scheduleBotTurnIfNeeded(roomId);
-    }, RECONNECT_MS);
-
-    // Store timer handle on the player object so reconnect can cancel it
     const playerInState = room.state.players.find(p => p.id === playerId);
-    if (playerInState) playerInState.reconnectTimer = timer;
+    if (playerInState) playerInState.disconnectedAt = Date.now();
+    startReconnectTimer(roomId, playerId, RECONNECT_MS);
 
     broadcastRoomInfo(roomId);
     broadcastState(roomId);
   });
 });
+
+// Load persisted rooms from Redis before accepting connections
+await loadRoomsFromRedis();
 
 httpServer.listen(PORT, () => {
   console.log(`ZAR server running on port ${PORT}`);
@@ -876,4 +1016,16 @@ process.on('uncaughtException', (err) => {
 });
 process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason);
+});
+
+process.on('SIGTERM', () => {
+  console.log('[shutdown] SIGTERM received — notifying players and draining…');
+  io.emit('server_restart', { message: 'Server is restarting. Reconnect in a few seconds with your same name.' });
+  setTimeout(() => {
+    io.close();
+    httpServer.close(() => {
+      redis?.disconnect();
+      process.exit(0);
+    });
+  }, 3000);
 });
