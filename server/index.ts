@@ -35,6 +35,28 @@ const voiceRooms = new Map<string, Set<string>>(); // roomId → Set<socketId>
 // ── Stall detection ─────────────────────────────────────────────────────────────
 const lastMoveAt = new Map<string, number>();
 const roomWatchdogs = new Map<string, ReturnType<typeof setInterval>>();
+const pendingBotTimers = new Set<string>();
+
+// ── Room cleanup ────────────────────────────────────────────────────────────────
+const roomCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const ROOM_CLEANUP_MS = 10 * 60 * 1000; // 10 minutes after game_over / empty lobby
+
+function scheduleRoomCleanup(roomId: string) {
+  if (roomCleanupTimers.has(roomId)) return; // already scheduled
+  const id = setTimeout(() => {
+    rooms.delete(roomId);
+    lastMoveAt.delete(roomId);
+    roomCleanupTimers.delete(roomId);
+    stopWatchdog(roomId);
+    console.log(`[cleanup] Room ${roomId} deleted`);
+  }, ROOM_CLEANUP_MS);
+  roomCleanupTimers.set(roomId, id);
+}
+
+function cancelRoomCleanup(roomId: string) {
+  const id = roomCleanupTimers.get(roomId);
+  if (id !== undefined) { clearTimeout(id); roomCleanupTimers.delete(roomId); }
+}
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SYMBOLS: CardSymbol[] = ['galaxy', 'moon', 'cloud', 'sun', 'star', 'lightning'];
@@ -59,7 +81,9 @@ function removeFromVoice(socketId: string) {
 }
 
 function genRoomId(): string {
-  return Math.random().toString(36).substring(2, 7).toUpperCase();
+  let id: string;
+  do { id = Math.random().toString(36).substring(2, 7).toUpperCase(); } while (rooms.has(id));
+  return id;
 }
 
 // ── Broadcast helpers ──────────────────────────────────────────────────────────
@@ -74,6 +98,10 @@ function broadcastState(roomId: string) {
   // Send public state (no hands) to spectators
   for (const spec of room.state.spectators) {
     io.to(spec.id).emit('game_state', { ...buildClientState(room.state, 'spectator'), isSpectator: true });
+  }
+  // Schedule deletion once the game is fully over
+  if (room.state.phase === 'game_over') {
+    scheduleRoomCleanup(roomId);
   }
 }
 
@@ -113,12 +141,17 @@ function startWatchdog(roomId: string) {
     const room = rooms.get(roomId);
     if (!room || room.state.phase !== 'playing') { stopWatchdog(roomId); return; }
     const since = Date.now() - (lastMoveAt.get(roomId) ?? 0);
-    if (since > 14_000) {
-      const cur = room.state.players[room.state.currentPlayerIndex];
-      if (cur?.isBot) {
-        console.log(`[watchdog] Rescuing stuck bot turn in room ${roomId} (stalled ${since}ms)`);
-        executeBotTurn(roomId);
-      }
+    const cur = room.state.players[room.state.currentPlayerIndex];
+    if (since > 14_000 && cur?.isBot) {
+      console.log(`[watchdog] Rescuing stuck bot turn in room ${roomId} (stalled ${since}ms)`);
+      executeBotTurn(roomId);
+    } else if (since > 30_000 && cur && !cur.isBot && !cur.connected) {
+      // Disconnected human holding the turn — auto-advance so the game doesn't stall
+      console.log(`[watchdog] Auto-advancing disconnected player ${cur.name} in room ${roomId} (stalled ${since}ms)`);
+      touchRoom(roomId);
+      room.state = advanceTurnSkippingInactive(room.state);
+      broadcastState(roomId);
+      scheduleBotTurnIfNeeded(roomId);
     }
   }, 7_000);
   roomWatchdogs.set(roomId, id);
@@ -134,10 +167,17 @@ function scheduleBotTurnIfNeeded(roomId: string) {
   const room = rooms.get(roomId);
   if (!room || room.state.phase !== 'playing') return;
   const cur = room.state.players[room.state.currentPlayerIndex];
-  if (cur?.isBot) setTimeout(() => executeBotTurn(roomId), 10_000);
+  if (cur?.isBot && !pendingBotTimers.has(roomId)) {
+    pendingBotTimers.add(roomId);
+    setTimeout(() => {
+      pendingBotTimers.delete(roomId);
+      executeBotTurn(roomId);
+    }, 10_000);
+  }
 }
 
 function executeBotTurn(roomId: string) {
+  pendingBotTimers.delete(roomId); // clear any stale timer flag (e.g. watchdog path)
   const room = rooms.get(roomId);
   if (!room) return;
   if (room.state.phase !== 'playing') return;
@@ -147,7 +187,16 @@ function executeBotTurn(roomId: string) {
 
   touchRoom(roomId); // mark activity so watchdog won't double-fire
 
-  const action = computeBotAction(room.state, bot.id);
+  let action: ReturnType<typeof computeBotAction>;
+  try {
+    action = computeBotAction(room.state, bot.id);
+  } catch (err) {
+    console.error(`[bot] computeBotAction threw in room ${roomId}:`, err);
+    room.state = advanceTurnSkippingInactive(room.state);
+    broadcastState(roomId);
+    scheduleBotTurnIfNeeded(roomId);
+    return;
+  }
 
   switch (action.type) {
     case 'declare_symbol': {
@@ -245,7 +294,17 @@ function executeBotTurn(roomId: string) {
 io.on('connection', (socket: Socket) => {
   let currentRoomId: string | null = null;
 
+  // Simple per-connection rate limiter: max 30 game-action events per second
+  let rateCount = 0;
+  let rateWindowStart = Date.now();
+  function isRateLimited(): boolean {
+    const now = Date.now();
+    if (now - rateWindowStart >= 1000) { rateCount = 0; rateWindowStart = now; }
+    return ++rateCount > 30;
+  }
+
   function getRoomAndPlayer() {
+    if (isRateLimited()) return null;
     if (!currentRoomId) return null;
     const room = rooms.get(currentRoomId);
     if (!room) return null;
@@ -273,7 +332,8 @@ io.on('connection', (socket: Socket) => {
   // ── create_room ──
   socket.on('create_room', ({ playerName, targetScore }: { playerName: string; targetScore: number }) => {
     const roomId = genRoomId();
-    const player = { id: socket.id, name: playerName.trim() || 'Player', hand: [], score: 0, connected: true, announcedLastCard: false };
+    const validScore = Math.max(25, Math.min(200, Math.round((Number(targetScore) || 50) / 25) * 25));
+    const player = { id: socket.id, name: (playerName.trim() || 'Player').slice(0, 20), hand: [], score: 0, connected: true, announcedLastCard: false };
     const state: GameState = {
       phase: 'lobby',
       players: [player],
@@ -286,7 +346,7 @@ io.on('connection', (socket: Socket) => {
       waitingForDeclaration: false,
       drawnThisTurn: false,
       dealerIndex: 0,
-      targetScore: targetScore || 50,
+      targetScore: validScore,
       matchWindowOpen: false,
       spectators: [],
     };
@@ -303,7 +363,7 @@ io.on('connection', (socket: Socket) => {
     const room = rooms.get(rid);
     if (!room) { emitError('Room not found.'); return; }
 
-    const name = playerName.trim() || 'Player';
+    const name = (playerName.trim() || 'Player').slice(0, 20);
 
     if (room.state.phase === 'lobby') {
       // Enforce name uniqueness in lobby
@@ -554,6 +614,7 @@ io.on('connection', (socket: Socket) => {
     const s = room.state;
 
     if (s.phase !== 'playing') return;
+    if (!s.matchWindowOpen) return;
     if (s.players[s.currentPlayerIndex].id === socket.id) { emitError("It's your turn — play normally."); return; }
 
     const top = s.playPile[s.playPile.length - 1];
@@ -650,6 +711,7 @@ io.on('connection', (socket: Socket) => {
     const { room } = ctx;
     if (socket.id !== room.hostId) return;
     if (room.state.phase !== 'round_over') return;
+    cancelRoomCleanup(currentRoomId!);
     room.state = startRound(room.state);
     broadcastState(currentRoomId!);
     touchRoom(currentRoomId!);
@@ -674,13 +736,24 @@ io.on('connection', (socket: Socket) => {
   socket.on('voice_leave', () => { removeFromVoice(socket.id); });
 
   // ── WebRTC signaling relay ──
+  function inSameRoom(otherSocketId: string): boolean {
+    if (!currentRoomId) return false;
+    const room = rooms.get(currentRoomId);
+    if (!room) return false;
+    return room.state.players.some(p => p.id === otherSocketId)
+      || room.state.spectators.some(s => s.id === otherSocketId);
+  }
+
   socket.on('voice_offer', ({ targetId, offer }: { targetId: string; offer: unknown }) => {
+    if (!inSameRoom(targetId)) return;
     io.to(targetId).emit('voice_offer', { fromId: socket.id, offer });
   });
   socket.on('voice_answer', ({ targetId, answer }: { targetId: string; answer: unknown }) => {
+    if (!inSameRoom(targetId)) return;
     io.to(targetId).emit('voice_answer', { fromId: socket.id, answer });
   });
   socket.on('voice_ice', ({ targetId, candidate }: { targetId: string; candidate: unknown }) => {
+    if (!inSameRoom(targetId)) return;
     io.to(targetId).emit('voice_ice', { fromId: socket.id, candidate });
   });
 
@@ -719,6 +792,9 @@ io.on('connection', (socket: Socket) => {
       room.state = { ...room.state, players: room.state.players.filter(p => p.id !== socket.id) };
       if (room.hostId === socket.id && room.state.players.length > 0) {
         room.hostId = room.state.players[0].id;
+      }
+      if (room.state.players.length === 0) {
+        scheduleRoomCleanup(roomId);
       }
       broadcastRoomInfo(roomId);
       broadcastState(roomId);
@@ -763,6 +839,14 @@ io.on('connection', (socket: Socket) => {
 
       r.state = { ...r.state, players: newPlayers, currentPlayerIndex: newCurrentIdx };
 
+      // Transfer host if it was the departing player
+      if (r.hostId === playerId) {
+        const newHost = newPlayers.find(p => !p.isBot && p.connected)
+          ?? newPlayers.find(p => !p.isBot)
+          ?? newPlayers[0];
+        if (newHost) r.hostId = newHost.id;
+      }
+
       // End game if fewer than 2 active players remain
       const activePlayers = newPlayers.filter(p => p.connected || p.isBot);
       if (activePlayers.length < 2 && r.state.phase === 'playing') {
@@ -785,4 +869,11 @@ io.on('connection', (socket: Socket) => {
 
 httpServer.listen(PORT, () => {
   console.log(`ZAR server running on port ${PORT}`);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
 });
