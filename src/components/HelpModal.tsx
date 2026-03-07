@@ -19,7 +19,7 @@ export default function HelpModal({ initialTab = 'start', onClose }: HelpModalPr
           <button className={`help-tab${tab === 'start'  ? ' help-tab--active' : ''}`} onClick={() => setTab('start')}>Get Started</button>
           <button className={`help-tab${tab === 'rules'  ? ' help-tab--active' : ''}`} onClick={() => setTab('rules')}>Rules</button>
           <button className={`help-tab${tab === 'tips'   ? ' help-tab--active' : ''}`} onClick={() => setTab('tips')}>Tips</button>
-          <button className={`help-tab${tab === 'issues' ? ' help-tab--active' : ''}`} onClick={() => setTab('issues')}>Troubleshoot</button>
+          <button className={`help-tab${tab === 'issues' ? ' help-tab--active' : ''}`} onClick={() => setTab('issues')}>Issues</button>
         </div>
 
         <div className="help-modal__content">
@@ -117,7 +117,7 @@ function Rules() {
       </ul>
 
       <h3>Out-of-turn matching</h3>
-      <p>At any time, if the top discard card exactly matches a card in your hand (same color AND same symbol or command), you can immediately play it — even when it's not your turn. The player whose turn it was draws 1 penalty card. Your turn then comes next.</p>
+      <p>If the top discard card exactly matches a card in your hand (same color AND same symbol or command), you can play it at any time — even when it's not your turn. The match window stays open until the next card is played, so there's no rush. The player whose turn it was draws 1 penalty card, and your turn comes next.</p>
 
       <h3>Doubles</h3>
       <p>Play two identical cards (same color + same symbol) together as one move for an amplified effect. You cannot go out on a double — you must have at least 3 cards to play a double.</p>
@@ -137,7 +137,7 @@ function Tips() {
       <h2>Tips</h2>
 
       <h3>Stay alert for matches</h3>
-      <p>Matching is available at any time — not just right after a card is played. Keep an eye on the top discard card and be ready to slam down a match the moment it appears.</p>
+      <p>The match window stays open until the next card is played — there is no time limit. As long as the top discard card hasn't changed, you can play an exact match at any point during other players' turns.</p>
 
       <h3>Stack Wasps</h3>
       <p>If someone plays a Wasp and you have one too, play yours to pass the penalty on. Each additional Wasp adds 2 more draws, so a chain of Wasps can be devastating for whoever finally absorbs it.</p>
@@ -220,8 +220,8 @@ function Issues() {
       <h3>16. Forgot to say ZAR! and got challenged</h3>
       <p>The instant you play down to 1 card, tap <strong>Say ZAR!</strong> before anyone else acts. Opponents can challenge you at any moment until you do, forcing you to draw 1 penalty card.</p>
 
-      <h3>17. The match window closed before I could tap</h3>
-      <p>The out-of-turn match window lasts only <strong>1.5 seconds</strong> from when a card is played. Keep your eyes on the discard pile during other players' turns and tap the moment a match appears.</p>
+      <h3>17. I missed my chance to match</h3>
+      <p>The out-of-turn match window stays open until the <strong>next card is played</strong> — there is no time limit. As long as the top discard card hasn't changed, you can still tap it to match. Keep an eye on the discard pile and tap before anyone else plays.</p>
 
       <h3>18. A Dragon or Peacock modal appeared and the game froze</h3>
       <p>You played a Dragon or Peacock — the game is waiting for you to <strong>choose a symbol or color</strong>. Select one from the popup and play will continue immediately.</p>

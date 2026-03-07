@@ -78,9 +78,13 @@ export default function Card({ card, onClick, selected, playable, faceDown, smal
       title={`${label} ${sublabel} (${card.points}pts)`}
     >
       <div className="zar-card__points">{card.points}</div>
-      <div className="zar-card__emoji">{emoji}</div>
-      {!small && (
+      {small ? (
+        <div className="zar-card__emoji">{emoji}</div>
+      ) : (
         <>
+          <div className="zar-card__emoji-wrap">
+            <div className="zar-card__emoji">{emoji}</div>
+          </div>
           <div className="zar-card__label">{label}</div>
           <div className="zar-card__sublabel">{sublabel}</div>
         </>

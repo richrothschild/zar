@@ -135,7 +135,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
         )}
 
         <div className="lobby__help-buttons">
-          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>How to Get Started</button>
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>Get Started</button>
           <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('rules')}>Rules</button>
           <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('tips')}>Tips</button>
           <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('issues')}>Troubleshoot</button>
@@ -205,7 +205,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
         )}
 
         <div className="lobby__help-buttons">
-          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>How to Get Started</button>
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>Get Started</button>
           <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('rules')}>Rules</button>
           <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('issues')}>Troubleshoot</button>
         </div>
@@ -237,7 +237,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
         </div>
 
         <div className="lobby__help-buttons">
-          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>How to Get Started</button>
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>Get Started</button>
           <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('rules')}>Rules</button>
           <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('issues')}>Troubleshoot</button>
         </div>
@@ -255,7 +255,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
         <p className="lobby__hint">The host will see a <strong>"📋 Copy invite link"</strong> button in their lobby.</p>
         <button className="btn btn--ghost" onClick={goBackToName}>← Back</button>
         <div className="lobby__help-buttons">
-          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>How to Get Started</button>
+          <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>Get Started</button>
           <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('issues')}>Troubleshoot</button>
         </div>
       </div>
@@ -290,7 +290,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
       </button>
 
       <div className="lobby__help-buttons">
-        <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>How to Get Started</button>
+        <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('start')}>Get Started</button>
         <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('rules')}>Rules</button>
         <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('tips')}>Tips</button>
         <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('issues')}>Troubleshoot</button>

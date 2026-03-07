@@ -85,30 +85,16 @@ function broadcastRoomInfo(roomId: string) {
   });
 }
 
-// ── Match window timer ─────────────────────────────────────────────────────────
-const matchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// ── Match window ───────────────────────────────────────────────────────────────
+// The match window opens when a card is placed and closes when the next card is
+// placed on the discard pile. There is no time limit — players can match at any
+// point until someone plays next.
 
 function openMatchWindow(roomId: string) {
   const room = rooms.get(roomId);
   if (!room) return;
   room.state = { ...room.state, matchWindowOpen: true };
   broadcastState(roomId);
-
-  const timer = setTimeout(() => {
-    closeMatchWindow(roomId);
-  }, 1500);
-  matchTimers.set(roomId, timer);
-}
-
-function closeMatchWindow(roomId: string) {
-  const room = rooms.get(roomId);
-  if (!room) return;
-  clearTimeout(matchTimers.get(roomId));
-  matchTimers.delete(roomId);
-  room.state = { ...room.state, matchWindowOpen: false };
-  room.state = checkRoundOver(room.state);
-  broadcastState(roomId);
-  scheduleBotTurnIfNeeded(roomId);
 }
 
 // ── Bot helpers ────────────────────────────────────────────────────────────────
@@ -141,7 +127,7 @@ function executeBotTurn(roomId: string) {
       return;
     }
     case 'play_card': {
-      const [s2, card] = removeFromHand(room.state, bot.id, action.cardId);
+      const [s2, card] = removeFromHand({ ...room.state, matchWindowOpen: false }, bot.id, action.cardId);
       if (!card) break;
       room.state = applyPlay(s2, bot.id, card);
 
@@ -170,7 +156,7 @@ function executeBotTurn(roomId: string) {
       return;
     }
     case 'play_double': {
-      const [s2, card1] = removeFromHand(room.state, bot.id, action.cardId1);
+      const [s2, card1] = removeFromHand({ ...room.state, matchWindowOpen: false }, bot.id, action.cardId1);
       const [s3, card2] = removeFromHand(s2, bot.id, action.cardId2);
       if (!card1 || !card2) break;
       room.state = applyDouble(s3, bot.id, card1, card2);
@@ -391,7 +377,7 @@ io.on('connection', (socket: Socket) => {
     const ctx = getRoomAndPlayer();
     if (!ctx) return;
     const { room, player } = ctx;
-    const s = room.state;
+    const s = { ...room.state, matchWindowOpen: false };
 
     if (s.phase !== 'playing') { emitError('Game not in progress.'); return; }
     if (s.waitingForDeclaration) { emitError('Waiting for symbol/color declaration.'); return; }
@@ -421,7 +407,7 @@ io.on('connection', (socket: Socket) => {
     const ctx = getRoomAndPlayer();
     if (!ctx) return;
     const { room, player } = ctx;
-    const s = room.state;
+    const s = { ...room.state, matchWindowOpen: false };
 
     if (s.phase !== 'playing') return;
     if (s.waitingForDeclaration) return;
@@ -529,10 +515,6 @@ io.on('connection', (socket: Socket) => {
     const cardInHand = player.hand.find(c => c.id === cardId);
     if (!cardInHand) { emitError('Card not in your hand.'); return; }
     if (!top || !isMatch(cardInHand, top)) { emitError('Card does not match.'); return; }
-
-    // Close match window timer
-    clearTimeout(matchTimers.get(currentRoomId!));
-    matchTimers.delete(currentRoomId!);
 
     const matchedPlayer = s.players[s.currentPlayerIndex];
 
