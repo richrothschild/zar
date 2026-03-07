@@ -6,6 +6,12 @@ import HelpModal from './HelpModal';
 type HelpTab = 'start' | 'rules' | 'tips' | 'issues';
 type Step = 'name' | 'checking' | 'pick_room' | 'ask_host' | 'no_link';
 
+function ZarLogo() {
+  return (
+    <h1 className="lobby__title"><span className="zar-letter--z">Z</span><span className="zar-letter--a">A</span><span className="zar-letter--r">R</span></h1>
+  );
+}
+
 interface AvailableRoom { roomId: string; hostName: string; playerCount: number; }
 
 interface LobbyProps {
@@ -75,7 +81,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
     return (
       <div className="lobby">
         {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
-        <h1 className="lobby__title">ZAR</h1>
+        <ZarLogo />
 
         {isHost && (
           <div className="lobby__invite">
@@ -149,7 +155,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
     return (
       <div className="lobby lobby--centered">
         {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
-        <h1 className="lobby__title">ZAR</h1>
+        <ZarLogo />
         <p className="lobby__tagline">Looking for open games…</p>
         <div className="lobby__help-buttons">
           <button className="btn btn--ghost lobby__help-btn" onClick={() => setHelpTab('issues')}>Troubleshoot</button>
@@ -163,7 +169,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
     return (
       <div className="lobby lobby--centered">
         {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
-        <h1 className="lobby__title">ZAR</h1>
+        <ZarLogo />
         <p className="lobby__tagline">Hi <strong>{playerName}</strong>!</p>
 
         {availableRooms.length === 1 ? (
@@ -218,7 +224,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
     return (
       <div className="lobby lobby--centered">
         {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
-        <h1 className="lobby__title">ZAR</h1>
+        <ZarLogo />
         <p className="lobby__tagline">Hi <strong>{playerName}</strong>! No open games found.</p>
         <p className="lobby__tagline" style={{ fontSize: '1rem' }}>Would you like to host a new game?</p>
 
@@ -250,7 +256,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
     return (
       <div className="lobby lobby--centered">
         {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
-        <h1 className="lobby__title">ZAR</h1>
+        <ZarLogo />
         <p className="lobby__tagline">Ask the host to share their invite link with you.</p>
         <p className="lobby__hint">The host will see a <strong>"📋 Copy invite link"</strong> button in their lobby.</p>
         <button className="btn btn--ghost" onClick={goBackToName}>← Back</button>
@@ -266,7 +272,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
   return (
     <div className="lobby lobby--centered">
       {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
-      <h1 className="lobby__title">ZAR</h1>
+      <ZarLogo />
 
       {roomCode
         ? <p className="lobby__tagline">You're invited! Enter your name to join.</p>

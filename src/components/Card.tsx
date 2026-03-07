@@ -37,7 +37,7 @@ export default function Card({ card, onClick, selected, playable, faceDown, smal
         className={`zar-card zar-card--back${small ? ' zar-card--small' : ''}`}
         onClick={onClick}
       >
-        <span className="zar-card__back-logo">ZAR</span>
+        <span className="zar-card__back-logo"><span className="zar-letter--z">Z</span><span className="zar-letter--a">A</span><span className="zar-letter--r">R</span></span>
       </div>
     );
   }
