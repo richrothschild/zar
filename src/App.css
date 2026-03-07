@@ -63,23 +63,36 @@
   min-height: 100vh;
   gap: 1rem;
 }
+.lobby__logo-card {
+  display: inline-block;
+  background: linear-gradient(145deg, #1e1e3a 0%, #0f3460 100%);
+  border: 2.5px solid rgba(255,255,255,0.22);
+  border-radius: 20px;
+  padding: 0.5rem 1.8rem 0.75rem;
+  transform: rotate(-4deg);
+  box-shadow:
+    0 12px 40px rgba(0,0,0,0.55),
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 -2px 0 rgba(0,0,0,0.3);
+}
 .lobby__title {
   font-size: 5rem;
   font-weight: 900;
   letter-spacing: 0.2em;
   line-height: 1;
+  margin: 0;
 }
 .zar-letter--z {
   color: #f5c518;
-  text-shadow: 0 0 20px rgba(245,197,24,0.85), 0 0 55px rgba(245,197,24,0.35);
+  text-shadow: 0 2px 6px rgba(0,0,0,0.5);
 }
 .zar-letter--a {
-  color: #1e90ff;
-  text-shadow: 0 0 20px rgba(30,144,255,0.85), 0 0 55px rgba(30,144,255,0.35);
+  color: #4db8ff;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.5);
 }
 .zar-letter--r {
-  color: #e63946;
-  text-shadow: 0 0 20px rgba(230,57,70,0.85), 0 0 55px rgba(230,57,70,0.35);
+  color: #ff4d5e;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.5);
 }
 .lobby__tagline { color: #aaa; font-size: 1.1rem; }
 .lobby__player-name { color: #aaa; }

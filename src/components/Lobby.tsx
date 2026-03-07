@@ -8,7 +8,9 @@ type Step = 'name' | 'checking' | 'pick_room' | 'ask_host' | 'no_link';
 
 function ZarLogo() {
   return (
-    <h1 className="lobby__title"><span className="zar-letter--z">Z</span><span className="zar-letter--a">A</span><span className="zar-letter--r">R</span></h1>
+    <div className="lobby__logo-card">
+      <h1 className="lobby__title"><span className="zar-letter--z">Z</span><span className="zar-letter--a">A</span><span className="zar-letter--r">R</span></h1>
+    </div>
   );
 }
 
