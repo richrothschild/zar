@@ -238,6 +238,7 @@ function openMatchWindow(roomId: string) {
   if (!room) return;
   room.state = { ...room.state, matchWindowOpen: true };
   broadcastState(roomId);
+  scheduleBotTurnIfNeeded(roomId);
 }
 
 // Record the last moment any game action occurred in a room.
@@ -283,7 +284,7 @@ function scheduleBotTurnIfNeeded(roomId: string) {
     setTimeout(() => {
       pendingBotTimers.delete(roomId);
       executeBotTurn(roomId);
-    }, 5_000);
+    }, 3_000);
   }
 }
 
