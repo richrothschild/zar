@@ -86,8 +86,11 @@ export default function GameBoard({ state, myId, hostId, isSpectator }: GameBoar
             ? <span className="board__your-turn">Your turn!</span>
             : <span>Waiting for <strong>{currentPlayer?.name}</strong>…</span>
         }
-        {state.pendingDrawCount > 0 && (
+        {state.pendingDrawCount > 0 && isMyTurn && (
           <span className="board__wasp-warning">🐝 Draw {state.pendingDrawCount} or play Wasp</span>
+        )}
+        {state.pendingDrawCount > 0 && !isMyTurn && (
+          <span className="board__wasp-info">🐝 ×{state.pendingDrawCount} pending</span>
         )}
         {activeDisplay}
       </div>

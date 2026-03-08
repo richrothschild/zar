@@ -301,6 +301,10 @@
   background: rgba(245,197,24,0.1);
   border-radius: 20px; padding: 0.15rem 0.6rem;
 }
+.board__wasp-info {
+  color: #a89030; font-size: 0.85em;
+  border-radius: 20px; padding: 0.15rem 0.6rem;
+}
 .board__declared {
   color: #4a90d9; font-weight: 600;
   display: inline-flex; align-items: center; gap: 4px;
