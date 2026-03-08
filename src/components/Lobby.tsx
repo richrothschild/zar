@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { socket } from '../socket';
 import type { RoomInfo } from '../types';
 import HelpModal from './HelpModal';
+import DemoModal from './DemoModal';
 
 type HelpTab = 'start' | 'rules' | 'tips' | 'issues';
 type Step = 'name' | 'checking' | 'pick_room' | 'ask_host' | 'no_link';
@@ -36,6 +37,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
   const [error, setError] = useState('');
   const [step, setStep] = useState<Step>('name');
   const [helpTab, setHelpTab] = useState<HelpTab | null>(null);
+  const [showDemo, setShowDemo] = useState(false);
   const [availableRooms, setAvailableRooms] = useState<AvailableRoom[]>([]);
 
   const roomCode = getRoomCodeFromUrl();
@@ -288,6 +290,7 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
   return (
     <div className="lobby lobby--centered">
       {helpTab && <HelpModal initialTab={helpTab} onClose={() => setHelpTab(null)} />}
+      {showDemo && <DemoModal onClose={() => setShowDemo(false)} />}
       <ZarLogo />
 
       {roomCode
@@ -309,6 +312,10 @@ export default function Lobby({ roomInfo, myId, onStartGame }: LobbyProps) {
 
       <button className="btn btn--primary" onClick={handleJoin}>
         {roomCode ? 'Join Game' : 'Continue'}
+      </button>
+
+      <button className="btn btn--secondary lobby__demo-btn" onClick={() => setShowDemo(true)}>
+        ▶ Watch a Demo Game
       </button>
 
       <div className="lobby__help-buttons">
