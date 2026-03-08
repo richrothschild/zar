@@ -103,13 +103,15 @@ export function startRound(state: GameState): GameState {
   const currentDealerIndex = state.dealerIndex ?? 0;
   const nextDealerIndex = (currentDealerIndex + 1) % state.players.length;
 
-  return {
+  // Starting card counts as the dealer's play — advance past the dealer
+  // and apply command effects as if the dealer played it.
+  let s: GameState = {
     ...state,
     phase: 'playing',
     players,
     drawPile,
     playPile,
-    currentPlayerIndex: currentDealerIndex, // dealer goes first
+    currentPlayerIndex: currentDealerIndex,
     direction: 'cw',
     pendingDrawCount: 0,
     skipsRemaining: 0,
@@ -122,8 +124,24 @@ export function startRound(state: GameState): GameState {
     drawnThisTurn: false,
     dealerIndex: nextDealerIndex, // stored for the NEXT round
     roundWinnerId: undefined,
-    matchWindowOpen: false,
+    matchWindowOpen: true, // open so players can match the starting card
   };
+
+  if (topCard.kind === 'command') {
+    if (topCard.command === 'wasp') {
+      s = { ...s, pendingDrawCount: 2 };
+      s = advanceTurn(s);
+    } else if (topCard.command === 'frog') {
+      s = advanceTurn(s, 2); // skip dealer's left, land on player after
+    } else if (topCard.command === 'crab') {
+      s = { ...s, direction: 'ccw' };
+      s = advanceTurn(s);
+    }
+  } else {
+    s = advanceTurn(s); // normal: dealer played it, dealer's left goes first
+  }
+
+  return s;
 }
 
 // ── Turn Actions ───────────────────────────────────────────────────────────────
