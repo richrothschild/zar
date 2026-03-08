@@ -63,15 +63,16 @@ interface HandProps {
 export default function Hand({ hand, state, isMyTurn }: HandProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingCard, setPendingCard] = useState<CardType | null>(null);
+  const [pendingDoublePartner, setPendingDoublePartner] = useState<CardType | null>(null);
   const [showDragon, setShowDragon] = useState(false);
   const [showPeacock, setShowPeacock] = useState(false);
 
   function handleCardClick(card: CardType) {
     if (state.phase !== 'playing') return;
 
-    // Out-of-turn exact match — always allowed
+    // Out-of-turn exact match — only when match window is open
     if (!isMyTurn) {
-      if (isMatchCard(card, state.topCard)) {
+      if (state.matchWindowOpen && isMatchCard(card, state.topCard)) {
         playMatch();
         socket.emit('match_card', { cardId: card.id });
         setSelectedId(null);
@@ -79,10 +80,10 @@ export default function Hand({ hand, state, isMyTurn }: HandProps) {
       return;
     }
 
-    // Double play selection
+    // Double play selection — not allowed when only 2 cards remain (can't go out on a double)
     if (selectedId && selectedId !== card.id) {
       const sel = hand.find(c => c.id === selectedId);
-      if (sel && areDoubleMatch(sel, card)) {
+      if (sel && areDoubleMatch(sel, card) && hand.length > 2) {
         // Try to play as double
         playDouble(sel, card);
         setSelectedId(null);
@@ -131,10 +132,11 @@ export default function Hand({ hand, state, isMyTurn }: HandProps) {
   function playDouble(c1: CardType, c2: CardType) {
     if (c2.kind === 'power' && c2.power === 'dragon') {
       setPendingCard(c2);
+      setPendingDoublePartner(c1);
       setShowDragon(true);
-      // TODO: handle double dragon declaration
     } else if (c2.kind === 'power' && c2.power === 'peacock') {
       setPendingCard(c2);
+      setPendingDoublePartner(c1);
       setShowPeacock(true);
     } else {
       socket.emit('play_double', { cardId1: c1.id, cardId2: c2.id });
@@ -144,7 +146,7 @@ export default function Hand({ hand, state, isMyTurn }: HandProps) {
   return (
     <div className="hand">
       {hand.map(card => {
-        const playable = isMyTurn ? canPlayCard(card, state) : isMatchCard(card, state.topCard);
+        const playable = isMyTurn ? canPlayCard(card, state) : (state.matchWindowOpen && isMatchCard(card, state.topCard));
         const isSelected = card.id === selectedId;
         return (
           <CardComponent
@@ -160,25 +162,34 @@ export default function Hand({ hand, state, isMyTurn }: HandProps) {
       {showDragon && pendingCard && (
         <DragonModal
           onSelect={symbol => {
-            socket.emit('play_card', { cardId: pendingCard.id });
-            // Server will wait for declare_symbol
+            if (pendingDoublePartner) {
+              socket.emit('play_double', { cardId1: pendingDoublePartner.id, cardId2: pendingCard.id });
+            } else {
+              socket.emit('play_card', { cardId: pendingCard.id });
+            }
             socket.emit('declare_symbol', { symbol });
             setShowDragon(false);
             setPendingCard(null);
+            setPendingDoublePartner(null);
           }}
-          onClose={() => { setShowDragon(false); setPendingCard(null); }}
+          onClose={() => { setShowDragon(false); setPendingCard(null); setPendingDoublePartner(null); }}
         />
       )}
 
       {showPeacock && pendingCard && (
         <PeacockModal
           onSelect={color => {
-            socket.emit('play_card', { cardId: pendingCard.id });
+            if (pendingDoublePartner) {
+              socket.emit('play_double', { cardId1: pendingDoublePartner.id, cardId2: pendingCard.id });
+            } else {
+              socket.emit('play_card', { cardId: pendingCard.id });
+            }
             socket.emit('declare_color', { color });
             setShowPeacock(false);
             setPendingCard(null);
+            setPendingDoublePartner(null);
           }}
-          onClose={() => { setShowPeacock(false); setPendingCard(null); }}
+          onClose={() => { setShowPeacock(false); setPendingCard(null); setPendingDoublePartner(null); }}
         />
       )}
     </div>
